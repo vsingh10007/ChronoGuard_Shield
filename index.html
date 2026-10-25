@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#e2e8f0" />
+  <title>ChronoGuard | Dependency Guardian</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: { ink: '#172033', canvas: '#e2e8f0', panel: '#f8fafc', cgblue: '#2457d6', good: '#15803d', bad: '#b91c1c' }, boxShadow: { soft: '0 8px 28px rgba(15,23,42,.07)' } } }
+    }
+  </script>
+  <style>
+    :root { color-scheme: light; }
+    html { scroll-behavior: smooth; }
+    body { background: #e2e8f0; color: #172033; }
+    .monitor-card { animation: card-rise .55s ease both; } .monitor-card:nth-child(2){animation-delay:.07s}.monitor-card:nth-child(3){animation-delay:.14s}.monitor-card:nth-child(4){animation-delay:.21s}
+    @keyframes card-rise { from { opacity:0; transform:translateY(12px) scale(.985) } to { opacity:1; transform:translateY(0) scale(1) } }
+    button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
+    .node { cursor: pointer; outline: none; }
+    .node .node-card { transition: stroke .15s, filter .15s, transform .15s; }
+    .node:hover .node-card, .node:focus .node-card, .node.selected .node-card { stroke: #2457d6; stroke-width: 3; filter: drop-shadow(0 3px 5px rgba(37,87,214,.18)); }
+    .edge { cursor: pointer; }
+    .edge:focus { outline: none; }
+    .edge:focus .edge-hit, .edge:hover .edge-hit, .edge.selected .edge-hit { stroke: #2457d6; stroke-width: 9; opacity: .22; }
+    .edge-line { fill: none; stroke-width: 3; stroke-linecap: round; transition: stroke .2s; }
+    .edge-line.good { stroke: #16a34a; }
+    .edge-line.bad { stroke: #dc2626; stroke-dasharray: 7 6; }
+    .edge-line.neutral { stroke: #94a3b8; stroke-dasharray: 5 6; }
+    .node-good { fill: #f0fdf4; stroke: #22c55e; }
+    .node-bad { fill: #fef2f2; stroke: #ef4444; }
+    .node-neutral { fill: #f8fafc; stroke: #94a3b8; }
+    .pulse { animation: pulse 1.4s ease-in-out infinite; transform-origin: center; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+    .switch-track { transition: background .2s; }
+    .switch-thumb { transition: transform .2s; }
+    .toast { transition: opacity .2s, transform .2s; }
+
+    .simulation-page .simulation-panel { position: fixed; z-index: 30; right: 18px; top: 82px; width: 278px; max-height: calc(100vh - 100px); overflow-y: auto; box-shadow: 0 18px 50px rgba(15,23,42,.18); }
+    .simulation-page main { padding-right: 320px; }
+    .simulation-page .simulation-panel .grid { grid-template-columns: minmax(0,1fr); }
+    .dashboard-page .simulation-panel { display: none; }
+    .simulation-page #topology { margin-top: 0; }
+    .simulation-page #topology .grid { grid-template-columns: minmax(0,1fr); }
+    .simulation-page #topology aside { display: none; }
+    .simulation-page #topology > div > div:first-child { border-right: 0; }
+    .simulation-page #topology svg { max-height: calc(100vh - 300px); }
+    .simulation-page #incidents { margin-top: 18px; }
+    .node .node-card.node-off { fill: #fef3c7; stroke: #f59e0b; }
+    @media (max-width: 1050px) { .simulation-page .simulation-panel { position: static; width: auto; max-height: none; margin-bottom: 18px; } .simulation-page main { padding-right: 16px; } .simulation-page #topology svg { max-height: none; } }
+
+    @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+  </style>
+</head>
+<body class="min-h-screen antialiased dashboard-page">
+  <div class="min-h-screen lg:grid lg:grid-cols-[180px_minmax(0,1fr)]">
+    <aside class="border-b border-slate-300 bg-slate-950 px-3 py-4 text-slate-100 lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:border-slate-800">
+      <a href="index.html" title="ChronoGuard" class="flex items-center justify-center gap-2 rounded-xl px-1 py-2 text-white"><span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-sm font-black shadow-lg shadow-blue-950/30">CG</span><span class="text-sm font-extrabold tracking-tight">ChronoGuard</span></a>
+      <nav class="mt-7 grid gap-2 text-xs font-bold">
+        <a title="Overview" class="flex items-center gap-3 rounded-xl bg-slate-800 px-3 py-3 text-white" href="index.html"><span class="text-lg">⌂</span><span>Overview</span></a>
+        <a title="Simulation" class="flex items-center gap-3 rounded-xl px-3 py-3 text-slate-300 hover:bg-slate-800 hover:text-white" href="simulation.html"><span class="text-lg">⚡</span><span>Simulation</span></a>
+      </nav>
+      <div class="mt-8 flex flex-col items-center gap-2 text-[9px] text-slate-400"><span class="h-2 w-2 rounded-full bg-emerald-400"></span><span>DEMO</span></div>
+    </aside>
+
+    <main id="overview" class="min-w-0 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+      <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div><p class="text-[10px] font-extrabold tracking-[.2em] text-blue-700">CHRONOGUARD / OVERVIEW</p><h1 class="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">System monitoring</h1><p class="mt-1 text-sm text-slate-600">Monitor protection status, service availability, and recent events at a glance.</p></div>
+        </header>
+
+      <section class="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4" aria-label="System summary">
+        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-soft"><p class="text-xs font-semibold text-slate-500">Protection status</p><p id="systemState" class="mt-2 text-lg font-extrabold text-emerald-700">Operational</p><p id="systemStateHint" class="mt-1 text-[11px] text-slate-500">Shield monitoring source integrity</p></article>
+        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-soft"><p class="text-xs font-semibold text-slate-500">Dependency health</p><p id="healthyCount" class="mt-2 text-2xl font-extrabold">5 / 5</p><p class="mt-1 text-[11px] text-slate-500">Healthy services in dependency graph</p></article>
+        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-soft"><p class="text-xs font-semibold text-slate-500">Events recorded</p><p id="incidentCount" class="mt-2 text-2xl font-extrabold">0</p><p class="mt-1 text-[11px] text-slate-500">Detected and contained events</p></article>
+        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-soft"><p class="text-xs font-semibold text-slate-500">Recovery readiness</p><p id="recoveryCount" class="mt-2 text-2xl font-extrabold">0</p><p class="mt-1 text-[11px] text-slate-500">Successful simulated recoveries</p></article>
+      </section>
+
+      <section class="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Live monitoring indicators">
+        <article class="monitor-card rounded-2xl border border-slate-300 bg-white p-5 shadow-soft transition hover:-translate-y-1 hover:shadow-xl"><div class="flex items-center justify-between"><span class="text-xs font-bold uppercase tracking-wider text-slate-500">Protection</span><span class="grid h-9 w-9 place-items-center rounded-xl bg-emerald-100 text-lg text-emerald-700">盾</span></div><p class="mt-4 flex items-center gap-2 text-xl font-extrabold text-emerald-700"><span class="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500"></span>Monitoring</p><p class="mt-1 text-xs text-slate-500">ChronoGuard status</p></article>
+        <article class="monitor-card rounded-2xl border border-slate-300 bg-white p-5 shadow-soft transition hover:-translate-y-1 hover:shadow-xl"><div class="flex items-center justify-between"><span class="text-xs font-bold uppercase tracking-wider text-slate-500">Service health</span><span class="grid h-9 w-9 place-items-center rounded-xl bg-blue-100 text-lg text-blue-700">◉</span></div><p class="mt-4 text-3xl font-extrabold" id="overviewHealthy">5/5</p><p class="mt-1 text-xs text-slate-500">Simulated components healthy</p></article>
+        <article class="monitor-card rounded-2xl border border-slate-300 bg-white p-5 shadow-soft transition hover:-translate-y-1 hover:shadow-xl"><div class="flex items-center justify-between"><span class="text-xs font-bold uppercase tracking-wider text-slate-500">Incidents</span><span class="grid h-9 w-9 place-items-center rounded-xl bg-amber-100 text-lg text-amber-700">⚠</span></div><p class="mt-4 text-3xl font-extrabold" id="overviewIncidents">0</p><p class="mt-1 text-xs text-slate-500">Events detected in this session</p></article>
+        <article class="monitor-card rounded-2xl border border-slate-300 bg-white p-5 shadow-soft transition hover:-translate-y-1 hover:shadow-xl"><div class="flex items-center justify-between"><span class="text-xs font-bold uppercase tracking-wider text-slate-500">Recoveries</span><span class="grid h-9 w-9 place-items-center rounded-xl bg-violet-100 text-lg text-violet-700">↻</span></div><p class="mt-4 text-3xl font-extrabold" id="overviewRecoveries">0</p><p class="mt-1 text-xs text-slate-500">Successful simulated failovers</p></article>
+      </section>
+      <section class="mb-5 grid gap-4 xl:grid-cols-[1.25fr_.75fr]">
+        <article class="rounded-2xl border border-slate-300 bg-white p-5 shadow-soft"><div class="flex items-center justify-between gap-3"><div><h2 class="text-base font-extrabold">Monitoring overview</h2><p class="mt-1 text-xs text-slate-500">Key subsystems and current readiness</p></div><span class="rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-extrabold text-emerald-800">● LIVE DEMO</span></div>
+          <div class="mt-5 space-y-4">
+            <div><div class="flex items-center justify-between text-xs"><span class="font-bold">Request validation</span><span class="font-bold text-emerald-700">READY</span></div><div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full w-[96%] rounded-full bg-emerald-500"></div></div></div>
+            <div><div class="flex items-center justify-between text-xs"><span class="font-bold">Failover readiness</span><span class="font-bold text-blue-700">STANDBY</span></div><div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full w-[82%] rounded-full bg-blue-500"></div></div></div>
+            <div><div class="flex items-center justify-between text-xs"><span class="font-bold">Data integrity checks</span><span class="font-bold text-emerald-700">ACTIVE</span></div><div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full w-[100%] rounded-full bg-emerald-500"></div></div></div>
+          </div><p class="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">ChronoGuard checks incoming values, isolates invalid data, switches to a trusted source when available, and verifies the recovery path.</p>
+        </article>
+        <article class="rounded-2xl border border-slate-300 bg-white p-5 shadow-soft"><h2 class="text-base font-extrabold">System snapshot</h2><p class="mt-1 text-xs text-slate-500">Current simulated environment</p><div class="mt-4 space-y-3">
+          <div class="flex items-center justify-between rounded-xl bg-slate-50 p-3"><span class="text-xs font-semibold text-slate-600">Protection engine</span><span class="flex items-center gap-2 text-xs font-bold text-emerald-700"><i class="h-2 w-2 rounded-full bg-emerald-500"></i> Enabled</span></div>
+          <div class="flex items-center justify-between rounded-xl bg-slate-50 p-3"><span class="text-xs font-semibold text-slate-600">Primary time source</span><span class="text-xs font-bold text-emerald-700">Available</span></div>
+          <div class="flex items-center justify-between rounded-xl bg-slate-50 p-3"><span class="text-xs font-semibold text-slate-600">Backup source</span><span class="text-xs font-bold text-blue-700">Standby</span></div>
+          <div class="flex items-center justify-between rounded-xl bg-slate-50 p-3"><span class="text-xs font-semibold text-slate-600">Last monitor check</span><span id="overviewClock" class="font-mono text-xs font-bold">--:--:--</span></div>
+        </div></article>
+      </section>
+      <section class="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-soft"><div class="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div><h2 class="text-base font-extrabold">Recent monitoring activity</h2><p class="mt-1 text-xs text-slate-500">Latest events from this overview session</p></div><span class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-600">EVENT FEED</span></div><div id="overviewActivity" class="divide-y divide-slate-100"><div class="flex items-center gap-3 p-4"><span class="grid h-9 w-9 place-items-center rounded-xl bg-emerald-100 text-emerald-700">✓</span><div class="flex-1"><p class="text-xs font-bold">Monitoring initialized</p><p class="mt-1 text-[11px] text-slate-500">Shield ready; waiting for simulated events.</p></div><span id="overviewActivityTime" class="font-mono text-[10px] text-slate-400">--:--:--</span></div></div></section>
+      <script>function cgOverviewTick(){const d=new Date();const t=d.toLocaleTimeString([], {hour12:false});const c=document.getElementById('overviewClock');if(c)c.textContent=t;const a=document.getElementById('overviewActivityTime');if(a)a.textContent=t;}cgOverviewTick();setInterval(cgOverviewTick,1000);</script>
+
+      <footer class="flex flex-wrap justify-between gap-2 py-5 text-[10px] text-slate-500"><span>ChronoGuard · Self-Healing Dependency Guardian</span><span>Monitoring overview · simulated metrics; API and PostgreSQL are not connected</span></footer>
+    </main>
+  </div>
+  <div id="toast" role="status" aria-live="polite" class="toast pointer-events-none fixed bottom-4 right-4 z-50 max-w-sm translate-y-2 rounded-xl border border-slate-300 bg-slate-950 px-4 py-3 text-xs font-semibold text-white opacity-0 shadow-xl"></div>
+
+</body>
+</html>
