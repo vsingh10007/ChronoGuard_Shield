@@ -1,7 +1,5 @@
 <!doctype html>
 <html lang="en">
-<<<<<<< HEAD
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -649,10 +647,8 @@
     </div>
     <div id="tst" role="status" aria-live="polite"></div>
     <script>
-        /* API contract used (see section 8 of the master prompt): GET /api/health, /api/monitor/status, /api/servers, /api/servers/{id}/health-history,
-           /api/overview, /api/incidents, /api/requests(+/stats, /{id}, /{id}/history), /api/logs, /api/simulations; PUT /api/monitor/config {enabled};
-           POST /api/monitor/check, /api/simulations/floods, /api/simulations/{id}/stop, /api/simulations/validation-suites/{suite}/run {case,payload},
-           /api/simulations/resilience/{scenario}, /api/simulations/reset. List responses: array or {data|items:[],meta:{total}}. */
+        /* API contract: simulation operations use /api/simulations/scenarios, /api/simulations/history,
+           POST /api/simulations {scenario_id, config}, /api/simulations/{run_id}, and /api/simulations/{run_id}/stop. */
         const $ = (s, e = document) => e.querySelector(s), esc = s => String(s ?? '—').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
         const get = (o, ...k) => { for (const x of k) if (o && o[x] != null && o[x] !== '') return o[x]; return null };
         const f = v => v == null || v === '' ? '—' : esc(v), na = '<span class="mu">Not Available</span>';
@@ -780,7 +776,14 @@
         }
 
         /* ---------- Overview ---------- */
-        const srv = s => `<div class="card"><div style="display:flex;justify-content:space-between"><h2>${f(get(s, 'name', 'id'))} — ${/prim/i.test(s.role) ? 'Primary' : 'Backup'}</h2>${hp(get(s, 'health', 'status'))}</div>${kv([['Current role', s.active === true ? pl('Active', 'ok') : s.active === false ? pl('Standby', 'in') : '—'], ['Readiness', f(s.readiness)], ['Last health check', ts(get(s, 'last_check_at', 'last_check'))], ['Consecutive failures', f(s.consecutive_failures)], ['Response time', s.response_ms != null ? s.response_ms + ' ms' : '—']])}${S.mon && S.mon.enabled === false ? '<small style="color:#f59e0b">May be stale — monitoring paused</small>' : ''}</div>`;
+        const serverLoad = s => {
+            const load = Number(s.load_percent);
+            if (!Number.isFinite(load)) return na;
+            const percent = Math.max(0, Math.min(100, load));
+            const overloaded = /overloaded/i.test(String(get(s, 'health', 'status') || ''));
+            return `<div role="meter" aria-label="Simulated server load" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}" class="bar"><i style="width:${percent}%;background:${overloaded ? '#ef4444' : 'var(--ac)'}"></i></div><small class="mu">${percent}%${overloaded ? ' · OVERLOADED' : ' · simulated load'}</small>`;
+        };
+        const srv = s => `<div class="card"><div style="display:flex;justify-content:space-between"><h2>${f(get(s, 'name', 'id'))} — ${/prim/i.test(s.role) ? 'Primary' : 'Backup'}</h2>${hp(get(s, 'health', 'status'))}</div>${kv([['Current role', s.active === true ? pl('Active', 'ok') : s.active === false ? pl('Standby', 'in') : '—'], ['Simulated load', serverLoad(s)], ['Readiness', f(s.readiness)], ['Last health check', ts(get(s, 'last_check_at', 'last_check'))], ['Consecutive failures', f(s.consecutive_failures)], ['Response time', s.response_ms != null ? s.response_ms + ' ms' : '—']])}${S.mon && S.mon.enabled === false ? '<small style="color:#f59e0b">May be stale — monitoring paused</small>' : ''}</div>`;
         async function pOv() {
             const [sl, ov, st, inc, lg, rq] = await Promise.all(['/api/servers', '/api/overview', '/api/requests/stats' + qs({ origin: 'operational' }), '/api/incidents', '/api/logs?page_size=6&origin=operational', '/api/requests?page_size=200&origin=operational'].map(u => api(u).catch(() => null)));
             const sv_ = sl && list(sl), pr = sv_?.find(s => /prim/i.test(s.role)), bk = sv_?.find(s => /back/i.test(s.role)), il = inc && list(inc), ac = il?.filter(i => !/resolved/i.test(get(i, 'status') || '')), m = S.mon;
@@ -860,34 +863,134 @@
         }
 
         /* ---------- Simulation Lab ---------- */
-        const V = { name: 'Test User', email: 'user@example.com', timestamp: '2026-10-26T10:30:00Z' }, mk = o => ({ ...V, ...o }), no = k => { const o = { ...V }; delete o[k]; return o }, OK = 'SUCCESS', RJ = 'REJECTED', CR = 'CORRECTED', QU = 'QUARANTINED';
-        const SU = {
-            email: [['Valid email', mk({}), [OK]], ['Missing email', no('email'), [RJ]], ['Empty email', mk({ email: '' }), [RJ]], ['Malformed email', mk({ email: 'user@@example' }), [RJ]], ['Email as number', mk({ email: 12345 }), [RJ]], ['Email null', mk({ email: null }), [RJ]], ['Whitespace around email', mk({ email: '  user@example.com ' }), [OK, CR]], ['Valid email, invalid timestamp', mk({ timestamp: 'not-a-timestamp' }), [RJ, QU]]],
-            timestamp: [['UTC ISO-8601', mk({}), [OK]], ['Positive offset', mk({ timestamp: '2026-10-26T16:00:00+05:30' }), [OK, CR]], ['Negative offset', mk({ timestamp: '2026-10-26T05:00:00-05:00' }), [OK, CR]], ['Missing timezone', mk({ timestamp: '2026-10-26 10:30:00' }), [CR, RJ, QU]], ['Invalid month', mk({ timestamp: '2026-13-01T00:00:00Z' }), [RJ]], ['Impossible calendar date', mk({ timestamp: '2026-02-30T00:00:00Z' }), [RJ]], ['Unparseable string', mk({ timestamp: 'not-a-valid-timestamp' }), [RJ, QU]], ['Wrong data type', mk({ timestamp: 20261026 }), [RJ]], ['Empty timestamp', mk({ timestamp: '' }), [RJ]], ['Missing timestamp', no('timestamp'), [RJ]]],
-            'required-fields': [['Valid request', mk({}), [OK]], ['Missing name', no('name'), [RJ]], ['Empty name', mk({ name: '' }), [RJ]], ['Name null', mk({ name: null }), [RJ]], ['Multiple simultaneous errors', { name: '', email: 7, timestamp: 'bad' }, [RJ]]]
+        let simScenarios = [];
+        let simRuns = [];
+        let simSettings = null;
+        let simServers = [];
+        let simPollTimer = null;
+        let activeRunId = null;
+        const simStatus = value => {
+            const key = String(value || 'UNKNOWN').toUpperCase();
+            const cls = key === 'PASS' || key === 'HEALTHY' ? 'ok' : key === 'RUNNING' || key === 'QUEUED' ? 'in' : key === 'FAIL' || key === 'ERROR' || key === 'UNHEALTHY' || key === 'OVERLOADED' ? 'cr' : key === 'NOT IMPLEMENTED' ? 'ne' : 'wa';
+            return pl(key, cls);
         };
-        const RES = [['primary-failure', 'Simulate primary failure'], ['backup-failure', 'Simulate backup failure'], ['both-failure', 'Both servers unavailable'], ['primary-recovery', 'Restore primary'], ['reset', 'Reset simulation state']];
+        const scenarioControls = scenario => (scenario.controls || []).map(key => {
+            const settings = simSettings || {};
+            const controls = {
+                request_count: ['Requests', 100, 1, 500],
+                concurrency: ['Concurrency', 2, 1, 10],
+                queue_capacity: ['Queue capacity', 25, 1, 500],
+                failure_threshold: ['Failure threshold', settings.failure_threshold || 3, 1, 10],
+                timeout_seconds: ['Timeout (seconds)', 2, 1, 30],
+                payload_size: ['Payload size (KB)', 1024, 1, 1024]
+            };
+            const control = controls[key];
+            if (!control) return '';
+            const [label, value, min, max] = control;
+            return `<label class="mu">${label}<input class="sim-control" data-config="${key}" type="number" min="${min}" max="${max}" value="${value}" required></label>`;
+        }).join('');
+        function renderScenarioCard(scenario) {
+            const history = simRuns.filter(run => run.scenario_id === scenario.id);
+            const latest = history[0];
+            const running = history.find(run => ['QUEUED', 'RUNNING'].includes(run.status));
+            const outcome = latest ? latest.outcome || latest.status : 'NOT RUN';
+            const supported = scenario.implemented === true;
+            const controls = supported ? scenarioControls(scenario) : '';
+            const actual = latest ? latest.actual_result || latest.error_message || latest.status : scenario.implemented ? 'Not run' : 'Backend support is not implemented.';
+            return `<article class="card scenario-card" data-scenario="${esc(scenario.id)}"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><p class="mu mono">${esc(scenario.id)} · ${esc(scenario.severity.toUpperCase())} · ${esc(scenario.availability)}</p><h3>${esc(scenario.name)}</h3><p class="mu">${esc(scenario.description)}</p></div>${simStatus(outcome)}</div><p><b>Expected:</b> ${esc(scenario.expected_result)}</p><p><b>Actual:</b> ${esc(actual)}</p><p class="mu">Execution: ${simStatus(latest?.status || 'NOT RUN')} ${latest?.progress != null ? `${latest.progress}%` : ''}</p><details${supported && controls ? ' open' : ''}><summary>Scenario configuration</summary><div class="tools sim-controls">${controls || '<span class="mu">No configurable parameters</span>'}</div></details>${supported ? `<div class="tools"><button class="btn p" data-a="simRun" data-id="${esc(scenario.id)}" ${running ? 'disabled' : ''}>Run Simulation</button>${running ? `<button class="btn" data-a="simStop" data-run="${esc(running.run_id)}">Stop</button>` : ''}</div>` : '<p class="mu">This scenario is listed for planning only; its backend test is not implemented.</p>'}</article>`;
+        }
+        function simulationSummary() {
+            const passed = simRuns.filter(run => run.outcome === 'PASS').length;
+            const failed = simRuns.filter(run => ['FAIL', 'ERROR'].includes(run.outcome)).length;
+            const running = simRuns.filter(run => ['RUNNING', 'QUEUED'].includes(run.status)).length;
+            const dbStatus = S.conn === 'Connected' ? 'CONNECTED' : S.conn === 'Degraded' ? 'DEGRADED' : 'DISCONNECTED';
+            const primary = simServers.find(server => server.service_name === 'primary');
+            const backup = simServers.find(server => server.service_name === 'backup');
+            const activeRun = simRuns.find(run => ['RUNNING', 'QUEUED'].includes(run.status));
+            const statusKpi = (label, value, note = '') => `<div class="card kpi"><span>${label}</span><b>${value}</b><small>${note}</small></div>`;
+            return `<div class="kpis">${statusKpi('Overall simulation', activeRun ? simStatus('RUNNING') : simRuns[0] ? simStatus(simRuns[0].outcome) : simStatus('IDLE'), 'Current run state')}${statusKpi('ChronoGuard Health Shield', simSettings ? simStatus(simSettings.shield_enabled ? 'ENABLED' : 'DISABLED') : simStatus('UNKNOWN'), 'Persisted backend setting')}${statusKpi('Server A', primary ? `${simStatus(primary.health)} · ${primary.active ? 'ACTIVE' : 'STANDBY'} · ${primary.load_percent}%` : simStatus('UNKNOWN'), 'Status from monitor / persisted load')}${statusKpi('Server B', backup ? `${simStatus(backup.health)} · ${backup.active ? 'ACTIVE' : 'STANDBY'} · ${backup.load_percent}%` : simStatus('UNKNOWN'), 'Status from monitor / persisted load')}${statusKpi('PostgreSQL', simStatus(dbStatus), 'GET /api/health')}${kpi('Total simulations', simRuns.length, 'Persisted runs')}${kpi('Passed tests', passed, 'PASS')}${kpi('Failed tests', failed, 'FAIL or ERROR')}${kpi('Running tests', running, 'QUEUED or RUNNING')}</div>`;
+        }
+        function simulationProgress() {
+            const run = simRuns.find(item => ['RUNNING', 'QUEUED'].includes(item.status)) || (activeRunId && simRuns.find(item => item.run_id === activeRunId));
+            if (!run) return '';
+            const metrics = run.metrics || {};
+            const primary = simServers.find(server => server.service_name === 'primary');
+            const backup = simServers.find(server => server.service_name === 'backup');
+            const started = run.started_at ? ts(run.started_at) : 'Starting';
+            const elapsed = metrics.elapsed_ms != null ? `${metrics.elapsed_ms} ms` : 'Measuring';
+            return `<section class="card"><h2>Live simulation progress ${simStatus(run.status)}</h2><p class="mu">${esc(run.scenario_id)} · Started ${started} · Elapsed ${elapsed}</p><div class="bar"><i style="width:${Math.max(0, Math.min(100, run.progress || 0))}%"></i></div><p>${run.progress || 0}% · Lifecycle: ${esc(run.stage || 'Monitor')}</p>${kv([['Requests sent', f(metrics.requests_sent)], ['Accepted', f(metrics.requests_accepted)], ['Rejected', f(metrics.requests_rejected)], ['Failed', f(metrics.requests_failed)], ['Pending', f(metrics.requests_pending)], ['Recovered / retried', f(metrics.requests_recovered)], ['Average response', metrics.average_response_ms == null ? '—' : `${metrics.average_response_ms} ms`], ['Throughput', metrics.throughput_per_second == null ? '—' : `${metrics.throughput_per_second}/s`], ['Server A', primary ? `${primary.health} · ${primary.active ? 'ACTIVE' : 'STANDBY'}` : 'Unknown'], ['Server B', backup ? `${backup.health} · ${backup.active ? 'ACTIVE' : 'STANDBY'}` : 'Unknown'], ['Database operation', metrics.database_verified === true ? 'Verified in PostgreSQL' : metrics.database_verified === false ? 'Verification failed' : run.status === 'RUNNING' ? 'In progress' : 'Not required for this scenario']])}</section>`;
+        }
         async function pSim() {
-            const m = S.mon, h = list(await api('/api/simulations').catch(() => [])), on = m?.enabled;
-            view(`<div class="bn sim" style="margin:0 0 14px;border-radius:10px">SIMULATION MODE — tests run against the local/designated test environment only. Records are tagged SIMULATION.</div>
-<div class="card"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Automated Health Checks</h2><button class="sw" id="sw" role="switch" aria-checked="${!!on}" aria-label="Automated health checks" data-a="mt" ${m ? '' : 'disabled'}></button>${m ? on ? pl('Enabled', 'ok') : pl('Disabled — status may be stale', 'ne') : pl('Not Available', 'ne')}</div>
-${m ? kv([['Interval', m.interval_seconds + ' s'], ['Request timeout', m.timeout_seconds + ' s'], ['Failure threshold', m.failure_threshold + ' consecutive failures'], ['Last health check', ts(m.last_check_at) + ' (' + f(m.last_check_type) + ')']]) : '<p class="mu">Monitor status endpoint unavailable.</p>'}<button class="btn" data-a="mc" ${m ? '' : 'disabled'}>Run manual check</button></div>
-<div class="card"><h2>Request Flood Test</h2><form id="ff" class="tools" onsubmit="return false"><label>Requests <select name="count">${opt([10, 50, 100, 250, 500].map(x => [x, x]), 50)}</select></label><label>Per second <input name="rate" type="number" min="1" max="50" value="10" style="width:80px"></label><label>Type <select name="type">${opt([['mixed', 'Mixed'], ['valid', 'Valid'], ['invalid', 'Invalid']], 'mixed')}</select></label><label>Concurrency <input name="conc" type="number" min="1" max="10" value="2" style="width:70px"></label><button class="btn p" data-a="fs">Start flood test</button><button class="btn" data-a="fx">Stop test</button><button class="btn" data-a="fc">Clear results</button></form><p class="mu">Limits are enforced by the backend. Pause is not offered because the backend has no pause operation.</p><div id="fr"></div></div>
-<div class="card"><h2>Validation Test Suites</h2><div class="chips" role="tablist">${[['email', 'Email'], ['timestamp', 'Timestamp'], ['required-fields', 'Required fields & integrity']].map(([k, l]) => `<button class="chip${S.suite == k ? ' on' : ''}" role="tab" aria-selected="${S.suite == k}" data-a="su" data-v="${k}">${l}</button>`).join('')}</div><p><button class="btn p" data-a="sa">Run all</button></p><div id="sr"></div></div>
-<div class="card"><h2>Server Resilience Tests</h2><p class="mu">Safe simulated faults only. Failover is reported only if the backend confirms it.</p><div class="tools">${RES.map(([k, l]) => `<button class="btn" data-a="rs2" data-v="${k}">${l}</button>`).join('')}</div><div id="rr"></div></div>
-<div class="card"><h2>Custom Test Scenarios</h2><p class="mu">Not Implemented — requires a bounded scenario endpoint on the backend.</p></div>
-<div class="card"><h2>Simulation results & history</h2>${h.length ? table(['Test ID', 'Name', 'Category', 'Started', 'Completed', 'Requests', 'Expected', 'Actual', 'Result'], h.map(s => `<tr><td class="mono">${f(get(s, 'id', 'test_id'))}</td><td>${f(s.name)}</td><td>${f(s.category)}</td><td>${ts(s.started_at)}</td><td>${ts(s.completed_at)}</td><td>${f(s.requests_attempted)}</td><td>${f(get(s, 'expected', 'expected_outcome'))}</td><td>${f(get(s, 'actual', 'actual_outcome'))}</td><td>${s.passed == null ? '—' : s.passed ? pl('✓ Passed', 'ok') : pl('✕ Failed', 'cr')}</td></tr>`).join('')) : empty('No simulation runs recorded.')}</div>`); suiteRender(); floodRender()
+            if (S.demo) {
+                view(errBox('Simulation requires the backend', 'Turn off Demo data to run real tests. Demo records are not measurements and cannot control the Health Shield.'));
+                return;
+            }
+            view('<div class="ctr mu" role="status">Loading Simulation Control Center from FastAPI…</div>');
+            const results = await Promise.allSettled([
+                api('/api/shield/config'), api('/api/monitor/status'), api('/api/servers'),
+                api('/api/health'), api('/api/simulations/scenarios'), api('/api/simulations/history?limit=100')
+            ]);
+            const value = index => results[index].status === 'fulfilled' ? results[index].value : null;
+            simSettings = value(0);
+            S.mon = value(1);
+            simServers = list(value(2));
+            const health = value(3);
+            if (health) S.conn = health.database === 'connected' ? 'Connected' : 'Degraded';
+            simScenarios = list(value(4));
+            simRuns = list(value(5));
+            if (!simSettings || !simScenarios.length || !value(5)) {
+                view(errBox('Simulation backend unavailable', results.filter(item => item.status === 'rejected').map(item => item.reason?.message).filter(Boolean).join('; ') || 'Initialize the PostgreSQL tables, then retry.'));
+                return;
+            }
+            const categories = [...new Set(simScenarios.map(scenario => scenario.category))];
+            const grouped = categories.map(category => `<section><h2>${esc(category)}</h2><div class="g2">${simScenarios.filter(scenario => scenario.category === category).map(renderScenarioCard).join('')}</div></section>`).join('');
+            view(`<header class="ht"><h1>Simulation Control Center</h1><p>Measured tests against local validation and simulated dependencies. No external traffic is generated.</p></header>${simulationSummary()}<section class="card"><div class="hr"><div><h2>ChronoGuard Health Shield</h2><p class="mu">Automated protection and manual simulation execution are separate controls.</p></div><button class="sw" id="shield-config-toggle" role="switch" aria-checked="${simSettings.shield_enabled}" aria-label="ChronoGuard Health Shield" data-a="shieldToggle"></button><b>${simSettings.shield_enabled ? 'ENABLED' : 'DISABLED'}</b></div>${kv([['Automated health checks', simSettings.monitoring_enabled && simSettings.shield_enabled ? 'RUNNING' : 'PAUSED'], ['Failure threshold', `${simSettings.failure_threshold} consecutive checks`], ['Failover threshold', `${simSettings.overload_threshold}% simulated load`], ['Monitor status', f(S.mon?.status)], ['Latest check', ts(S.mon?.last_check_at)]])}<button class="btn" data-a="mc">Run manual diagnostic check</button></section>${simulationProgress()}<div class="hr"><h2>Preloaded scenarios</h2><button class="btn" data-a="simRefresh">Refresh data</button><button class="btn" data-a="simReset">Reset simulation state</button></div><p class="mu">All runs are bounded to 500 local validation operations and concurrency 10. Unsupported scenarios are shown but never reported as passed.</p>${grouped}<section class="card"><h2>Simulation history</h2>${simRuns.length ? table(['Run', 'Scenario', 'Started', 'Status', 'Stage', 'Progress', 'Expected', 'Actual', 'Outcome'], simRuns.map(run => `<tr><td class="mono">${esc(run.run_id.slice(0, 8))}</td><td>${esc(run.scenario_id)} · ${esc(run.scenario_name)}</td><td>${ts(run.started_at || run.created_at)}</td><td>${simStatus(run.status)}</td><td>${esc(run.stage || '—')}</td><td>${run.progress}%</td><td>${esc(run.expected_result)}</td><td>${esc(run.actual_result || run.error_message || 'Pending')}</td><td>${simStatus(run.outcome)}</td></tr>`).join('')) : empty('No persisted simulation runs yet.')}</section>`);
+            if (simRuns.some(run => ['RUNNING', 'QUEUED'].includes(run.status))) {
+                activeRunId = simRuns.find(run => ['RUNNING', 'QUEUED'].includes(run.status)).run_id;
+                scheduleSimulationPoll(activeRunId);
+            }
         }
-        function suiteRender() { const k = S.suite, R = S.res[k] || {}; $('#sr').innerHTML = table(['Test case', 'Expected', 'Actual', 'Result', 'Message', 'Request ID', ''], SU[k].map((c, i) => { const r = R[i]; const res = !r ? '—' : r.err ? pl('Unavailable', 'ne') : c[2].includes(r.actual) ? pl('✓ Pass', 'ok') : pl('✕ Fail', 'cr'); return `<tr><td>${c[0]}</td><td>${c[2].join(' / ')}</td><td>${r ? r.err ? '—' : rp(r.actual) : '—'}</td><td>${res}</td><td>${r ? esc(r.msg) : '—'}</td><td class="mono">${r ? f(r.rid) : '—'}</td><td><button class="btn" data-a="sc" data-i="${i}">Run</button></td></tr>` }).join('')) }
-        async function runCase(i) {
-            const k = S.suite, c = SU[k][i]; S.res[k] = S.res[k] || {}; let r; try { r = await api(`/api/simulations/validation-suites/${k}/run`, { method: 'POST', body: { case: c[0], payload: c[1] } }) } catch (e) { r = e.body && get(e.body, 'final_status', 'status') ? e.body : null; if (!r) { S.res[k][i] = { err: 1, msg: e.message }; return } }
-            S.res[k][i] = { actual: RS(get(r, 'final_status', 'processing_status', 'status')), msg: get(r, 'message', 'detected_issue', 'rejection_reason') || '', rid: get(r, 'request_id') }
+        async function runSimulationScenario(button) {
+            const card = button.closest('.scenario-card');
+            const config = {};
+            let valid = true;
+            card.querySelectorAll('[data-config]').forEach(input => {
+                const value = Number(input.value);
+                if (!input.checkValidity() || !Number.isInteger(value)) {
+                    input.reportValidity();
+                    valid = false;
+                    return;
+                }
+                config[input.dataset.config] = value;
+            });
+            if (!valid) return;
+            button.disabled = true;
+            try {
+                const run = await api('/api/simulations', { method: 'POST', body: { scenario_id: button.dataset.id, config } });
+                activeRunId = run.run_id;
+                await pSim();
+                if (['RUNNING', 'QUEUED'].includes(run.status)) scheduleSimulationPoll(activeRunId);
+            } catch (error) {
+                toast(`Simulation could not start: ${error.message}`, 1);
+                button.disabled = false;
+            }
         }
-        function floodRender() {
-            const r = S.fl, el = $('#fr'); if (!el) return; if (!r) { el.innerHTML = ''; return } const n = +get(r, 'count', 'requested') || 0, a = +get(r, 'attempted') || 0, codes = r.status_codes || r.codes;
-            el.innerHTML = kv([['Test ID', f(get(r, 'id', 'test_id'))], ['Status', f(r.status)], ['Progress', `<div class="bar"><i style="width:${n ? Math.min(100, a / n * 100) : 0}%"></i></div>${a} / ${n || '—'}`], ['Attempted', f(r.attempted)], ['Accepted', f(get(r, 'accepted', 'success'))], ['Corrected', f(r.corrected)], ['Rejected', f(r.rejected)], ['Failed', f(r.failed)], ['Avg / max response', (r.avg_ms != null ? r.avg_ms : '—') + ' / ' + (r.max_ms != null ? r.max_ms : '—') + ' ms'], ['HTTP codes', codes ? esc(Object.entries(codes).map(([c, v]) => c + ':' + v).join(' · ')) : '—'], ['Started / ended', ts(r.started_at) + ' → ' + ts(r.completed_at)]])
+        function scheduleSimulationPoll(runId) {
+            clearTimeout(simPollTimer);
+            simPollTimer = setTimeout(async () => {
+                if (cur() !== 'simulation-lab' || !runId) return;
+                try {
+                    const run = await api(`/api/simulations/${encodeURIComponent(runId)}`);
+                    if (!simRuns.some(item => item.run_id === runId)) simRuns.unshift(run);
+                    else simRuns = simRuns.map(item => item.run_id === runId ? run : item);
+                    await pSim();
+                    if (['RUNNING', 'QUEUED'].includes(run.status)) scheduleSimulationPoll(runId);
+                    else activeRunId = null;
+                } catch (error) {
+                    toast(`Could not read simulation progress: ${error.message}`, 1);
+                }
+            }, 350);
         }
-        async function pollFl() { clearTimeout(S.pt); const id = get(S.fl, 'id', 'test_id'); if (!id || cur() != 'simulation-lab') return; try { S.fl = await api('/api/simulations/' + encodeURIComponent(id)); floodRender(); if (/pending|running|queued/i.test(S.fl.status || '')) S.pt = setTimeout(pollFl, 1000) } catch (e) { toast(e.message, 1) } }
 
         /* ---------- actions ---------- */
         const ACT = {
@@ -902,25 +1005,37 @@ ${m ? kv([['Interval', m.interval_seconds + ' s'], ['Request timeout', m.timeout
                 const lg = await api('/api/logs' + qs({ incident_id: id, page_size: 10 })).then(list).catch(() => []);
                 $('#dp').innerHTML = `<div class="dh"><b>Incident ${esc(id)}</b><button class="btn" data-a="dx" aria-label="Close details">✕</button></div><h3>Lifecycle</h3><div class="chips">${LCI.map((s, k) => pl((k <= at ? '✓ ' : '') + s, k < at ? 'ok' : k == at ? 'in' : 'ne')).join('')}${/fail|unresolved/i.test((i.status || '') + (i.recovery_result || '')) ? pl('Failed / Unresolved', 'cr') : ''}</div><h3>Summary</h3>${kv([['Title', f(i.title)], ['Detected', ts(i.detected_at)], ['Affected service', f(i.server)], ['Severity', f(i.severity)], ['Source', f(i.source)], ['Origin', f(i.origin)], ['Failure details', f(get(i, 'details', 'failure_details', 'error'))], ['Containment', f(i.containment_action)], ['Recovery attempts', f(i.recovery_attempts)], ['Recovery result', f(i.recovery_result)], ['Verification', f(i.verification_result)]])}<h3>Related audit events</h3>${lg.length ? lg.map(l => `<div>${ts(l.timestamp)} · ${f(l.message)}</div>`).join('') : '<p class="mu">No related events stored.</p>'}`
             },
-            mt: async () => {
-                const on = S.mon?.enabled; if (on && !confirm('Pause automated health checks? Displayed status will become stale.')) return; $('#sw').disabled = true;
-                try { const r = await api('/api/monitor/config', { method: 'PUT', body: { enabled: !on } }); S.mon = r.data || r; toast('Monitoring ' + (S.mon.enabled ? 'enabled' : 'paused')) } catch (e) { toast(e.message, 1) }
-                S.busy = false; refresh()
+            shieldToggle: async () => {
+                const enabled = Boolean(simSettings?.shield_enabled);
+                if (enabled && !confirm('Disable the Health Shield and pause automated monitoring?')) return;
+                try {
+                    simSettings = await api('/api/shield/config', { method: 'PUT', body: { shield_enabled: !enabled } });
+                    toast(`Health Shield ${simSettings.shield_enabled ? 'enabled' : 'disabled'}; setting saved to PostgreSQL.`);
+                    await pSim();
+                } catch (error) { toast(`Could not update Health Shield: ${error.message}`, 1) }
             },
-            mc: async () => { try { await api('/api/monitor/check', { method: 'POST' }); toast('Manual health check completed') } catch (e) { toast(e.message, 1) } refresh() },
-            fs: async () => {
-                const d = Object.fromEntries(new FormData($('#ff'))); const b = { count: +d.count, rate: +d.rate, type: d.type, concurrency: +d.conc }; if (b.count >= 250 && !confirm(`Start a ${b.count}-request flood against the local test API?`)) return;
-                try { S.fl = await api('/api/simulations/floods', { method: 'POST', body: b }); S.fl.count = S.fl.count || b.count; floodRender(); pollFl() } catch (e) { toast(e.message, 1) }
+            mc: async () => {
+                try { await api('/api/monitor/check', { method: 'POST' }); toast('Manual diagnostic check completed'); await pSim() }
+                catch (error) { toast(`Health check failed: ${error.message}`, 1) }
             },
-            fx: async () => { const id = get(S.fl, 'id', 'test_id'); if (!id) return toast('No active test.', 1); try { await api(`/api/simulations/${encodeURIComponent(id)}/stop`, { method: 'POST' }); toast('Stop requested'); pollFl() } catch (e) { toast(e.message, 1) } },
-            fc: () => { clearTimeout(S.pt); S.fl = null; floodRender() },
-            su: b => { S.suite = b.dataset.v; pSim() }, sc: async b => { b.disabled = true; await runCase(+b.dataset.i); suiteRender() },
-            sa: async () => { for (let i = 0; i < SU[S.suite].length; i++)await runCase(i); suiteRender() },
-            rs2: async b => {
-                const k = b.dataset.v; if (k != 'reset' && !confirm('Run this SIMULATED fault? It affects simulation state only.')) return; try {
-                    const r = await api(k == 'reset' ? '/api/simulations/reset' : '/api/simulations/resilience/' + k, { method: 'POST' });
-                    $('#rr').innerHTML = kv(Object.entries(r.data || r).filter(([, v]) => typeof v != 'object').map(([a, v]) => [esc(a), f(v)])) || ''; toast('Backend responded')
-                } catch (e) { $('#rr').innerHTML = `<p class="mu">${esc(e.message)}</p>`; toast(e.message, 1) }
+            simRun: b => runSimulationScenario(b),
+            simStop: async b => {
+                try {
+                    await api(`/api/simulations/${encodeURIComponent(b.dataset.run)}/stop`, { method: 'POST' });
+                    await pSim();
+                    scheduleSimulationPoll(b.dataset.run);
+                } catch (error) { toast(`Could not stop simulation: ${error.message}`, 1) }
+            },
+            simRefresh: () => pSim(),
+            simReset: async () => {
+                if (!confirm('Reset simulated service state and simulation history? Request logs and incidents will be retained.')) return;
+                try {
+                    clearTimeout(simPollTimer);
+                    await api('/api/simulations/reset', { method: 'POST' });
+                    activeRunId = null;
+                    toast('Simulation state reset. Request and incident history was retained.');
+                    await pSim();
+                } catch (error) { toast(`Reset failed: ${error.message}`, 1) }
             }
         };
         document.addEventListener('click', e => { const n = e.target.closest('a[data-p]'); if (n) { e.preventDefault(); if (FILE) location.hash = n.dataset.p; else go(n.dataset.p); return } const a = e.target.closest('[data-a]'); if (a) ACT[a.dataset.a]?.(a) });
@@ -936,7 +1051,7 @@ ${m ? kv([['Interval', m.interval_seconds + ' s'], ['Request timeout', m.timeout
 </body>
 
 </html>
-=======
+<!-- Superseded dashboard markup from the unresolved merge is intentionally inactive.
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -1047,4 +1162,4 @@ ${m ? kv([['Interval', m.interval_seconds + ' s'], ['Request timeout', m.timeout
 
 </body>
 </html>
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
+-->

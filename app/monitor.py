@@ -1,4 +1,3 @@
-
 import logging
 import threading
 import time
@@ -7,7 +6,9 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.database import engine
+from app.database import SessionLocal, engine
+from app.config_store import get_settings, is_monitoring_enabled
+from app.models import HealthCheckLog
 
 logger = logging.getLogger("chronoguard.monitor")
 
@@ -44,9 +45,7 @@ def set_service_mode(service: str, mode: str) -> dict:
         raise ValueError("Service must be primary or backup.")
 
     if mode not in ("healthy", "timeout", "unavailable"):
-        raise ValueError(
-            "Mode must be healthy, timeout, or unavailable."
-        )
+        raise ValueError("Mode must be healthy, timeout, or unavailable.")
 
     with _state_lock:
         _services[service]["mode"] = mode
@@ -59,9 +58,7 @@ def get_monitor_state() -> dict:
     with _state_lock:
         return {
             name: {
-                key: value
-                for key, value in state.items()
-                if key != "persisted_status"
+                key: value for key, value in state.items() if key != "persisted_status"
             }
             for name, state in _services.items()
         }
@@ -111,16 +108,14 @@ def _save_health_change(
 
     with engine.begin() as connection:
         result = connection.execute(
-            text(
-                """
+            text("""
                 UPDATE service_health
                 SET
                     status = :status,
                     last_error = :last_error,
                     updated_at = :updated_at
                 WHERE service_name = :service_name
-                """
-            ),
+                """),
             {
                 "service_name": service,
                 "status": status,
@@ -132,14 +127,12 @@ def _save_health_change(
         # Create the row only if this service has never been recorded.
         if result.rowcount == 0:
             connection.execute(
-                text(
-                    """
+                text("""
                     INSERT INTO service_health
                         (service_name, status, last_error, updated_at)
                     VALUES
                         (:service_name, :status, :last_error, :updated_at)
-                    """
-                ),
+                    """),
                 {
                     "service_name": service,
                     "status": status,
@@ -149,15 +142,42 @@ def _save_health_change(
             )
 
 
-def check_services_once() -> list[dict]:
+def _save_health_check(result: dict, check_type: str) -> None:
+    db = SessionLocal()
+    try:
+        db.add(
+            HealthCheckLog(
+                service_name=result["service"],
+                result=result["mode"],
+                response_ms=result["response_time_ms"],
+                consecutive_failures=result["consecutive_failures"],
+                error=result["error"],
+                state=result["status"],
+                check_type=check_type,
+                checked_at=datetime.fromisoformat(result["checked_at"]),
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def check_services_once(check_type: str = "scheduled") -> list[dict]:
     """Check both services and persist status transitions."""
     with _check_lock:
         results = []
+        try:
+            failure_threshold = max(
+                1, min(int(get_settings()["failure_threshold"]), 10)
+            )
+        except Exception:
+            failure_threshold = FAILURES_BEFORE_UNHEALTHY
 
         for service in ("primary", "backup"):
-            probe_status, latency_ms, probe_error = _probe_service(
-                service
-            )
+            probe_status, latency_ms, probe_error = _probe_service(service)
 
             with _state_lock:
                 state = _services[service]
@@ -169,7 +189,7 @@ def check_services_once() -> list[dict]:
                     state["failures"] += 1
                     new_status = (
                         "unhealthy"
-                        if state["failures"] >= FAILURES_BEFORE_UNHEALTHY
+                        if state["failures"] >= failure_threshold
                         else "degraded"
                     )
 
@@ -194,9 +214,7 @@ def check_services_once() -> list[dict]:
                     )
                 else:
                     with _state_lock:
-                        _services[service]["persisted_status"] = (
-                            new_status
-                        )
+                        _services[service]["persisted_status"] = new_status
 
             result = {
                 "service": service,
@@ -209,6 +227,12 @@ def check_services_once() -> list[dict]:
             }
 
             results.append(result)
+            try:
+                _save_health_check(result, check_type)
+            except SQLAlchemyError:
+                logger.exception(
+                    "Could not persist health-check history for %s", service
+                )
             logger.info("Health check: %s", result)
 
         return results
@@ -219,6 +243,10 @@ def _monitor_loop() -> None:
     logger.info("ChronoGuard background monitor started.")
 
     while not _stop_event.is_set():
+        if not is_monitoring_enabled():
+            _stop_event.wait(CHECK_INTERVAL_SECONDS)
+            continue
+
         try:
             check_services_once()
         except Exception:

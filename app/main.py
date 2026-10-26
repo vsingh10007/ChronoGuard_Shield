@@ -1,38 +1,48 @@
 import logging
 import time
 import uuid
-<<<<<<< HEAD
 from contextlib import asynccontextmanager
-=======
 from datetime import datetime, timezone
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-from typing import Any, Optional
+from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-<<<<<<< HEAD
 from sqlalchemy import desc, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.database import engine, SessionLocal
-from app.models import Incident, RequestLog
+from app.config_store import get_settings, update_settings
+from app.database import Base, SessionLocal, engine
+from app.models import HealthCheckLog, Incident, RequestLog, ServiceHealth
 from app.monitor import (
-    start_monitor,
-    stop_monitor,
+    CHECK_INTERVAL_SECONDS,
+    FAILURES_BEFORE_UNHEALTHY,
+    TIMEOUT_SECONDS,
     check_services_once,
     get_monitor_state,
     set_service_mode,
+    start_monitor,
+    stop_monitor,
 )
 from app.request_validator import validate_request_data
-from app.shield.controller import ShieldController
 from app.shield.required_fields_guard import RequiredFieldsGuard
+from app.simulation_engine import (
+    MAX_CONCURRENCY,
+    MAX_REQUESTS,
+    SCENARIOS,
+    get_run,
+    list_runs,
+    reset_history,
+    start_run,
+    stop_run,
+)
 
 logger = logging.getLogger("chronoguard")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
+    Base.metadata.create_all(bind=engine)
     start_monitor()
     try:
         yield
@@ -43,10 +53,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="ChronoGuard API",
     description="Self-Healing Dependency Guardian",
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan,
 )
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -61,27 +70,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-=======
-from sqlalchemy import text, desc
-from sqlalchemy.exc import SQLAlchemyError
-
-from app.database import engine, SessionLocal, Base
-from app.models import Incident, RequestLog
-from app.shield.controller import ShieldController
-
-logger = logging.getLogger("chronoguard")
-app = FastAPI(title="ChronoGuard API", description="Self-Healing Dependency Guardian", version="1.1.0")
-# Supports local frontend testing via VS Code Live Server and localhost.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500", "http://127.0.0.1:5501", "http://localhost:5501", "null"],
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
-)
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-shield = ShieldController()
-
 
 class RequestValidationPayload(BaseModel):
     data: dict[str, Any]
@@ -92,34 +80,41 @@ class AgeValidationPayload(BaseModel):
     age: Any
 
 
-class SimulationPayload(BaseModel):
+class ShieldSettingsPayload(BaseModel):
+    shield_enabled: bool | None = None
+    monitoring_enabled: bool | None = None
+    failure_threshold: int | None = Field(default=None, ge=1, le=10)
+    overload_threshold: int | None = Field(default=None, ge=1, le=95)
+
+
+class MonitorSettingsPayload(BaseModel):
+    enabled: bool
+
+
+class SimulationStartPayload(BaseModel):
+    scenario_id: str
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class LegacySimulationPayload(BaseModel):
     event_type: str = Field(
-<<<<<<< HEAD
         pattern="^(validRequest|badTimestamp|sourceDown|missingField|exception|retryLoop)$"
     )
     source: str = Field(pattern="^(client|app|primary|backup)$")
     shield_enabled: bool = True
-    data: dict[str, Any] = Field(
-        default_factory=lambda: {
-            "name": "Demo User",
-            "email": "demo@example.com",
-        }
-    )
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+def _safe_payload(data: dict[str, Any]) -> dict[str, Any]:
+    secret_names = ("password", "token", "secret", "authorization", "api_key")
+    return {
+        key: value
+        for key, value in data.items()
+        if not any(secret in key.lower() for secret in secret_names)
+    }
 
 
 def _record_request(**values) -> None:
-    """Persist a request log to PostgreSQL."""
-=======
-    pattern="^(validRequest|badTimestamp|sourceDown|missingField|exception|retryLoop)$"
-)
-    source: str = Field(pattern="^(client|app|primary|backup)$")
-    shield_enabled: bool = True
-    data: dict[str, Any] = Field(default_factory=lambda: {"name": "Demo User", "email": "demo@example.com"})
-
-
-def _record_request(**values) -> None:
-    """Persist a request independently; failures are logged rather than hidden."""
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
     db = SessionLocal()
     try:
         db.add(RequestLog(**values))
@@ -132,7 +127,6 @@ def _record_request(**values) -> None:
         db.close()
 
 
-<<<<<<< HEAD
 def _record_incident(
     event_type: str,
     source: str,
@@ -145,49 +139,124 @@ def _record_incident(
             Incident(
                 incident_type=event_type,
                 affected_service=source,
-                severity="high" if final_status == "failed" else "medium",
+                severity="high" if final_status in ("failed", "ERROR") else "medium",
                 status=final_status,
-                description=(
-                    f"Simulation event '{event_type}' began at {source}."
-                ),
+                description=f"Simulation event '{event_type}' began at {source}.",
                 recovery_action=action,
             )
         )
-=======
-def _record_incident(event_type: str, source: str, final_status: str, action: str) -> None:
-    db = SessionLocal()
-    try:
-        db.add(Incident(
-            incident_type=event_type,
-            affected_service=source,
-            severity="high" if final_status == "failed" else "medium",
-            status=final_status,
-            description=f"Simulation event '{event_type}' began at {source}.",
-            recovery_action=action,
-        ))
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
         db.commit()
     except Exception:
         db.rollback()
         logger.exception("Could not persist ChronoGuard incident")
+        raise
     finally:
         db.close()
 
 
-<<<<<<< HEAD
-def _safe_payload(data: dict[str, Any]) -> dict[str, Any]:
-    """Exclude common secret fields from persisted payloads."""
-    secret_names = (
-        "password",
-        "token",
-        "secret",
-        "authorization",
-        "api_key",
-    )
+def _origin(row: RequestLog) -> str:
+    return "simulation" if "simulation" in (row.request_type or "") else "operational"
+
+
+def _request_json(row: RequestLog) -> dict:
+    payload = row.payload or {}
+    error = row.error_message
+    corrected = bool(payload.get("timestamp_correction", {}).get("corrected"))
     return {
-        key: value
-        for key, value in data.items()
-        if not any(secret in key.lower() for secret in secret_names)
+        "id": row.id,
+        "request_id": row.request_id,
+        "request_type": row.request_type,
+        "endpoint": row.source,
+        "source": row.source,
+        "received_at": row.created_at.isoformat() if row.created_at else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.created_at.isoformat() if row.created_at else None,
+        "original_payload": payload,
+        "payload": payload,
+        "validation_status": row.validation_status,
+        "validation_errors": [error] if error else [],
+        "detected_issue": error,
+        "correction_applied": corrected,
+        "correction_reason": payload.get("timestamp_correction", {}).get("reason"),
+        "original_value": payload.get("timestamp_correction", {}).get(
+            "original_timestamp"
+        ),
+        "corrected_value": payload.get("timestamp_correction", {}).get(
+            "replacement_timestamp"
+        ),
+        "rejection_reason": (
+            error if row.final_status in ("rejected", "failed") else None
+        ),
+        "final_status": (row.final_status or "unknown").upper(),
+        "processing_status": row.final_status,
+        "processing_server": row.active_server,
+        "active_server": row.active_server,
+        "processing_stage": row.processing_stage,
+        "verification_status": (
+            "VERIFIED" if row.final_status in ("processed", "recovered") else None
+        ),
+        "recovery_action": row.recovery_action,
+        "duration_ms": row.duration_ms,
+        "origin": _origin(row),
+    }
+
+
+def _incident_json(row: Incident) -> dict:
+    return {
+        "id": row.id,
+        "incident_id": f"INC-{row.id}",
+        "detected_at": row.created_at.isoformat() if row.created_at else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "title": row.incident_type,
+        "incident_type": row.incident_type,
+        "server": row.affected_service,
+        "affected_service": row.affected_service,
+        "severity": row.severity,
+        "status": row.status,
+        "description": row.description,
+        "recovery_action": row.recovery_action,
+        "recovery_result": row.recovery_action,
+        "origin": (
+            "simulation" if "simulation" in (row.incident_type or "") else "operational"
+        ),
+    }
+
+
+def _monitor_summary(settings: dict) -> dict:
+    snapshot = get_monitor_state()
+    statuses = [item.get("status") for item in snapshot.values()]
+    latest = max(
+        (
+            item.get("checked_at")
+            for item in snapshot.values()
+            if item.get("checked_at")
+        ),
+        default=None,
+    )
+    enabled = bool(settings["shield_enabled"] and settings["monitoring_enabled"])
+    return {
+        "enabled": enabled,
+        "shield_enabled": settings["shield_enabled"],
+        "monitoring_enabled": settings["monitoring_enabled"],
+        "interval_seconds": CHECK_INTERVAL_SECONDS,
+        "timeout_seconds": TIMEOUT_SECONDS,
+        "failure_threshold": settings["failure_threshold"] or FAILURES_BEFORE_UNHEALTHY,
+        "last_check_at": latest,
+        "last_check_type": "scheduled" if enabled else "paused",
+        "services": snapshot,
+        "status": (
+            "unhealthy"
+            if "unhealthy" in statuses
+            else (
+                "degraded"
+                if "degraded" in statuses
+                else (
+                    "healthy"
+                    if statuses and all(s == "healthy" for s in statuses)
+                    else "unknown"
+                )
+            )
+        ),
     }
 
 
@@ -196,13 +265,8 @@ def root():
     return {
         "message": "ChronoGuard API is running",
         "status": "healthy",
-        "version": "1.1.0",
+        "version": "1.2.0",
     }
-=======
-@app.get("/")
-def root():
-    return {"message": "ChronoGuard API is running", "status": "healthy", "version": "1.1.0"}
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
 
 
 @app.get("/api/health")
@@ -210,533 +274,94 @@ def health_check():
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
-        return {"api": "healthy", "database": "connected"}
+        return {
+            "status": "healthy",
+            "api": "healthy",
+            "database": "connected",
+            "db": True,
+        }
     except Exception as exc:
         logger.exception("Health check failed")
-<<<<<<< HEAD
         raise HTTPException(
             status_code=503,
-            detail={"api": "running", "database": "disconnected"},
-        ) from exc
-=======
-        raise HTTPException(status_code=503, detail={"api": "running", "database": "disconnected"}) from exc
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-
-
-@app.post("/api/shield/validate-request")
-def validate_request(payload: RequestValidationPayload):
-    started = time.perf_counter()
-    request_id = str(uuid.uuid4())
-<<<<<<< HEAD
-
-    # First check that required fields exist and are text.
-    guard_result = RequiredFieldsGuard.validate(
-        payload.data,
-        payload.required_fields,
-    )
-
-    errors: list[str] = []
-    validator_result = None
-
-    if not guard_result["valid"]:
-        errors.append(guard_result["error"])
-    else:
-        # Then validate email and timestamp according to project policy.
-        validator_result = validate_request_data(payload.data)
-        if not validator_result["valid"]:
-            errors.extend(validator_result["errors"])
-
-    rejected = bool(errors)
-    reason = (
-        "; ".join(errors)
-        if rejected
-        else "Required fields, email, and timestamp validated"
-    )
-    action = (
-        "Rejected invalid request; data was not forwarded."
-        if rejected
-        else "Validated data is ready for the next processing stage."
-    )
-
-    if validator_result is not None and validator_result["valid"]:
-        data_to_log = validator_result["cleaned_data"]
-    else:
-        data_to_log = payload.data
-
-    # Persist the validation decision. A database failure must not be
-    # reported as a successful durable log.
-    _record_request(
-        request_id=request_id,
-        request_type="field_validation",
-        event_type="validation_rejected" if rejected else "field_validation",
-        source="shield.validate-request",
-        active_server=None,
-        shield_enabled=1,
-        validation_status="rejected" if rejected else "passed",
-        final_status="rejected" if rejected else "processed",
-        processing_stage="Contain" if rejected else "Verify",
-        payload=_safe_payload(data_to_log),
-        recovery_action=action,
-        error_message=reason if rejected else None,
-        duration_ms=max(
-            0, int((time.perf_counter() - started) * 1000)
-        ),
-    )
-
-    if rejected:
-        db = SessionLocal()
-        try:
-            db.add(
-                Incident(
-                    incident_type="validation_rejected",
-                    affected_service="shield.validate-request",
-                    severity="medium",
-                    status="rejected",
-                    description=f"Request {request_id} rejected: {reason}",
-                    recovery_action=action,
-                )
-            )
-=======
-    result = shield.validate_request(payload.data, payload.required_fields)
-    rejected = result["decision"] == "reject"
-    action = "Incomplete data was not forwarded." if rejected else "Required fields passed validation."
-    safe_payload = {k: v for k, v in payload.data.items() if not any(s in k.lower() for s in ("password", "token", "secret", "authorization", "api_key"))}
-    _record_request(
-        request_id=request_id, request_type="field_validation", event_type="missing_required_fields" if rejected else "field_validation",
-        source="shield.validate-request", active_server=None, shield_enabled=1,
-        validation_status="rejected" if rejected else "passed", final_status="rejected" if rejected else "processed",
-        processing_stage="Contain" if rejected else "Verify", payload=safe_payload, recovery_action=action,
-        error_message=result.get("reason") if rejected else None,
-        duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
-    )
-    if rejected:
-        db = SessionLocal()
-        try:
-            db.add(Incident(
-                incident_type="missing_required_fields", affected_service="shield.validate-request",
-                severity="medium", status="rejected",
-                description=f"Request rejected; missing fields: {result.get('missing_fields', [])}",
-                recovery_action=action,
-            ))
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-            db.commit()
-        except Exception:
-            db.rollback()
-            logger.exception("Failed to save validation incident")
-        finally:
-            db.close()
-<<<<<<< HEAD
-
-        raise HTTPException(
-            status_code=400,
             detail={
-                "decision": "reject",
-                "stage": "validation",
-                "reason": reason,
-                "request_id": request_id,
+                "status": "degraded",
+                "api": "healthy",
+                "database": "disconnected",
+                "db": False,
             },
-        )
-
-    return {
-        "decision": "allow",
-        "stage": "validation",
-        "reason": reason,
-        "request_id": request_id,
-        "validated_data": validator_result["cleaned_data"],
-    }
-=======
-        raise HTTPException(status_code=400, detail={**result, "request_id": request_id})
-    return {**result, "request_id": request_id}
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-
-
-@app.post("/api/shield/validate-age")
-def validate_age(payload: AgeValidationPayload):
-    started = time.perf_counter()
-    request_id = str(uuid.uuid4())
-    result = shield.validate_age(payload.age)
-    rejected = result["decision"] == "reject"
-<<<<<<< HEAD
-
-    action = (
-        "Invalid age input rejected before processing."
-        if rejected
-        else "Age normalized and accepted."
-    )
-
-    _record_request(
-        request_id=request_id,
-        request_type="age_validation",
-        event_type="age_validation",
-        source="shield.validate-age",
-        active_server=None,
-        shield_enabled=1,
-        validation_status="rejected" if rejected else "passed",
-        final_status="rejected" if rejected else "processed",
-        processing_stage="Contain" if rejected else "Verify",
-        payload={"age": str(payload.age)[:80]},
-        recovery_action=action,
-        error_message=result.get("reason") if rejected else None,
-        duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
-    )
-
-    if rejected:
-        raise HTTPException(
-            status_code=400,
-            detail={**result, "request_id": request_id},
-        )
-
-=======
-    action = "Invalid age input rejected before processing." if rejected else "Age normalized and accepted."
-    _record_request(
-        request_id=request_id, request_type="age_validation", event_type="age_validation",
-        source="shield.validate-age", active_server=None, shield_enabled=1,
-        validation_status="rejected" if rejected else "passed", final_status="rejected" if rejected else "processed",
-        processing_stage="Contain" if rejected else "Verify", payload={"age": str(payload.age)[:80]},
-        recovery_action=action, error_message=result.get("reason") if rejected else None,
-        duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
-    )
-    if rejected:
-        raise HTTPException(status_code=400, detail={**result, "request_id": request_id})
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-    return {**result, "request_id": request_id}
-
-
-@app.post("/api/simulation/run")
-def run_simulation(payload: SimulationPayload):
-<<<<<<< HEAD
-    """Run a simulated fault, validate requests, and log the outcome."""
-=======
-    """Run one deterministic simulated fault and persist its outcome in PostgreSQL."""
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-    started = time.perf_counter()
-    request_id = str(uuid.uuid4())
-    event = payload.event_type
-    source = payload.source
-<<<<<<< HEAD
-
-=======
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-    action = "No failover required; request processed on the primary path."
-    active_server: Optional[str] = "primary"
-    validation_status = "passed"
-    final_status = "processed"
-    stage = "Verify"
-    error_message = None
-<<<<<<< HEAD
-    data_to_log = _safe_payload(payload.data)
-
-    try:
-        if event == "validRequest":
-            if payload.shield_enabled:
-                # Required fields first, then email/timestamp validation.
-                guard = RequiredFieldsGuard.validate(
-                    payload.data,
-                    ["name", "email"],
-                )
-
-                checked = (
-                    validate_request_data(payload.data)
-                    if guard["valid"]
-                    else None
-                )
-
-                errors = []
-                if not guard["valid"]:
-                    errors.append(guard["error"])
-                elif checked is not None and not checked["valid"]:
-                    errors.extend(checked["errors"])
-
-                if errors:
-                    validation_status = "rejected"
-                    final_status = "rejected"
-                    stage = "Contain"
-                    active_server = None
-                    error_message = "; ".join(errors)
-                    action = (
-                        "Rejected invalid request; data was not forwarded "
-                        "to the processing path."
-                    )
-                else:
-                    data_to_log = _safe_payload(checked["cleaned_data"])
-                    action = (
-                        "Required fields, email, and timestamp passed "
-                        "validation; request processed on the primary path."
-                    )
-            else:
-                validation_status = "bypassed"
-                final_status = "processed"
-                action = (
-                    "Demo request processed without validation because "
-                    "the shield is disabled."
-=======
-
-    
-    try:
-        if event == "validRequest":
-            if payload.shield_enabled:
-                checked = shield.validate_request(payload.data, ["name", "email"])
-
-                if checked["decision"] == "reject":
-                    validation_status = "rejected"
-                    final_status = "rejected"
-                    stage = "Contain"
-                    action = "Rejected incomplete request; invalid data was not forwarded."
-                    error_message = checked.get("reason")
-                else:
-                    validation_status = "passed"
-                    final_status = "processed"
-                    stage = "Verify"
-                    active_server = "primary"
-                    action = "Required fields passed validation; valid request processed on the primary path."
-            else:
-                validation_status = "bypassed"
-                final_status = "processed"
-                stage = "Verify"
-                active_server = "primary"
-                action = (
-                    "Valid demo payload processed on the primary path without "
-                    "ChronoGuard validation because the shield is disabled."
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-                )
-
-        elif not payload.shield_enabled:
-            validation_status = "bypassed"
-            final_status = "failed"
-            stage = "Detect"
-            active_server = None
-            action = (
-                "Shield disabled; simulated fault was not contained "
-                "and the dependent request failed."
-            )
-            error_message = f"Shield disabled during simulated event: {event}"
-
-        elif event == "missingField":
-<<<<<<< HEAD
-            test_data = dict(payload.data)
-            test_data.pop("email", None)
-            checked = RequiredFieldsGuard.validate(
-                test_data,
-                ["name", "email"],
-            )
-            validation_status = "rejected" if not checked["valid"] else "passed"
-            final_status = "rejected" if not checked["valid"] else "processed"
-            stage = "Contain" if final_status == "rejected" else "Verify"
-            active_server = None if final_status == "rejected" else "primary"
-=======
-            data = dict(payload.data)
-            data.pop("email", None)
-            checked = shield.validate_request(data, ["name", "email"])
-            validation_status = (
-                "rejected" if checked["decision"] == "reject" else "passed"
-            )
-            final_status = (
-                "rejected" if validation_status == "rejected" else "processed"
-            )
-            stage = "Contain" if final_status == "rejected" else "Verify"
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-            action = (
-                "Rejected incomplete payload; invalid data was not forwarded."
-                if final_status == "rejected"
-                else "Required fields passed validation."
-            )
-<<<<<<< HEAD
-            error_message = checked.get("error") if final_status == "rejected" else None
-            data_to_log = _safe_payload(test_data)
-=======
-            error_message = (
-                checked.get("reason") if final_status == "rejected" else None
-            )
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-
-        elif event == "sourceDown":
-            failed = source if source in ("primary", "backup") else "primary"
-            fallback = "backup" if failed == "primary" else "primary"
-            active_server = fallback
-            final_status = "recovered"
-            stage = "Verify"
-            action = (
-                f"Detected {failed} unavailable; switched to simulated "
-                f"{fallback} and verified the fallback path."
-            )
-
-        elif event == "badTimestamp":
-            validation_status = "rejected"
-            final_status = "recovered"
-            stage = "Recover"
-            active_server = "backup"
-            action = (
-                "Contained invalid timestamp and used the simulated "
-                "trusted backup path."
-            )
-            error_message = "Invalid or future timestamp detected in the simulation."
-
-        elif event == "exception":
-            final_status = "recovered"
-            stage = "Recover"
-            active_server = "backup"
-            action = (
-<<<<<<< HEAD
-                "Caught the simulated application exception; routed "
-                "processing through the backup path."
-=======
-                "Caught the simulated application exception; "
-                "routed processing through the backup path."
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-            )
-            error_message = "Simulated application exception."
-
-        elif event == "retryLoop":
-            validation_status = "limited"
-            final_status = "recovered"
-            stage = "Recover"
-            active_server = "backup"
-            action = (
-                "Stopped the simulated retry loop at the guard limit "
-                "and selected the backup path."
-            )
-            error_message = "Simulated retry/loop limit reached."
-
-        elapsed = max(0, int((time.perf_counter() - started) * 1000))
-
-<<<<<<< HEAD
-=======
-        # Store only demo payload fields; never credentials or secrets.
-        safe_payload = {
-            k: v
-            for k, v in payload.data.items()
-            if not any(
-                s in k.lower()
-                for s in (
-                    "password",
-                    "token",
-                    "secret",
-                    "authorization",
-                    "api_key",
-                )
-            )
-        }
-
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-        _record_request(
-            request_id=request_id,
-            request_type="simulation",
-            event_type=event,
-            source=source,
-            active_server=active_server,
-            shield_enabled=1 if payload.shield_enabled else 0,
-            validation_status=validation_status,
-            final_status=final_status,
-            processing_stage=stage,
-<<<<<<< HEAD
-            payload=data_to_log,
-=======
-            payload=safe_payload,
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-            recovery_action=action,
-            error_message=error_message,
-            duration_ms=elapsed,
-        )
-
-<<<<<<< HEAD
-        if event != "validRequest" or final_status != "processed":
-=======
-        # Normal requests are logged, but are not incidents.
-        if event != "validRequest":
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-            _record_incident(event, source, final_status, action)
-
-        return {
-            "request_id": request_id,
-            "event_type": event,
-            "source": source,
-            "active_server": active_server,
-            "validation_status": validation_status,
-            "final_status": final_status,
-            "processing_stage": stage,
-            "recovery_action": action,
-            "error_message": error_message,
-            "duration_ms": elapsed,
-            "logged_to_postgresql": True,
-        }
-
-    except SQLAlchemyError as exc:
-        logger.exception(
-            "Database error while processing simulation request %s",
-            request_id,
-        )
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Request could not be logged to PostgreSQL; "
-                "database connection failed."
-            ),
         ) from exc
 
+
+@app.get("/api/shield/config")
+def read_shield_config():
+    try:
+        return get_settings()
     except Exception as exc:
-<<<<<<< HEAD
-        logger.exception("Unexpected simulation error for %s", request_id)
-=======
-        logger.exception(
-            "Unexpected simulation error for request %s",
-            request_id,
-        )
-        elapsed = max(0, int((time.perf_counter() - started) * 1000))
-
-        # Best-effort durable record for unexpected failures.
-        try:
-            _record_request(
-                request_id=request_id,
-                request_type="simulation",
-                event_type=event,
-                source=source,
-                active_server=None,
-                shield_enabled=1 if payload.shield_enabled else 0,
-                validation_status="error",
-                final_status="failed",
-                processing_stage="Detect",
-                payload=payload.data,
-                recovery_action=(
-                    "No recovery action completed; inspect backend logs."
-                ),
-                error_message=str(exc)[:1000],
-                duration_ms=elapsed,
-            )
-        except Exception:
-            logger.exception(
-                "Unable to persist failure record for request %s",
-                request_id,
-            )
-
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
+        logger.exception("Could not read Shield settings")
         raise HTTPException(
-            status_code=500,
-            detail={
-                "request_id": request_id,
-                "message": "Simulation failed; check backend logs.",
-            },
+            status_code=503,
+            detail="Shield settings are unavailable; initialize the database.",
         ) from exc
 
 
-<<<<<<< HEAD
+@app.put("/api/shield/config")
+def write_shield_config(payload: ShieldSettingsPayload):
+    values = payload.model_dump(exclude_none=True)
+    if "shield_enabled" in values:
+        values["monitoring_enabled"] = values["shield_enabled"]
+    try:
+        return update_settings(**values)
+    except Exception as exc:
+        logger.exception("Could not update Shield settings")
+        raise HTTPException(
+            status_code=503, detail="Shield settings could not be saved."
+        ) from exc
+
+
 @app.get("/api/monitor/status")
 def monitor_status():
-    return {
-        "monitor": get_monitor_state(),
-        "check_interval_seconds": 5,
-        "failures_before_unhealthy": 3,
-    }
+    try:
+        return _monitor_summary(get_settings())
+    except Exception as exc:
+        logger.exception("Could not read monitor status")
+        raise HTTPException(
+            status_code=503, detail="Monitor configuration is unavailable."
+        ) from exc
+
+
+@app.put("/api/monitor/config")
+def update_monitor_config(payload: MonitorSettingsPayload):
+    try:
+        settings = get_settings()
+        if payload.enabled and not settings["shield_enabled"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Enable the ChronoGuard Health Shield before enabling automated checks.",
+            )
+        settings = update_settings(monitoring_enabled=payload.enabled)
+        return _monitor_summary(settings)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Could not update monitor configuration")
+        raise HTTPException(
+            status_code=503, detail="Monitor configuration could not be saved."
+        ) from exc
 
 
 @app.post("/api/monitor/check")
 def monitor_check_now():
     try:
-        return {"results": check_services_once()}
+        return {
+            "results": check_services_once(check_type="manual"),
+            "monitoring_enabled": _monitor_summary(get_settings())["enabled"],
+        }
     except Exception as exc:
         logger.exception("Manual health check failed")
         raise HTTPException(
             status_code=503,
-            detail="Manual health check failed. Check backend logs.",
+            detail="Manual health check failed; check database connectivity and backend logs.",
         ) from exc
 
 
@@ -747,11 +372,169 @@ def simulate_service(service: str, mode: str):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-=======
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
+
+@app.get("/api/servers")
+def dashboard_servers():
+    try:
+        settings = get_settings()
+        db = SessionLocal()
+        try:
+            rows = db.query(ServiceHealth).all()
+            health = {row.service_name.lower(): row for row in rows}
+        finally:
+            db.close()
+        result = []
+        for service, label in (("primary", "Server A"), ("backup", "Server B")):
+            row = health.get(service)
+            status = row.status if row else "unknown"
+            load = settings[f"{service}_load_pct"]
+            if load >= settings["overload_threshold"]:
+                status = "overloaded"
+            result.append(
+                {
+                    "id": service,
+                    "name": label,
+                    "service_name": service,
+                    "role": service,
+                    "health": status,
+                    "status": status,
+                    "readiness": status,
+                    "last_check_at": (
+                        row.updated_at.isoformat() if row and row.updated_at else None
+                    ),
+                    "last_error": row.last_error if row else None,
+                    "active": settings["active_server"] == service,
+                    "load_percent": load,
+                    "load_kind": "bounded simulation concurrency; not host CPU utilization",
+                }
+            )
+        return result
+    except Exception as exc:
+        logger.exception("Could not load server health")
+        raise HTTPException(
+            status_code=503, detail="Server health data is unavailable."
+        ) from exc
+
+
+@app.get("/api/servers/{service_name}/health-history")
+def server_health_history(
+    service_name: str,
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    service = service_name.lower()
+    if service not in ("primary", "backup"):
+        raise HTTPException(status_code=404, detail="Server not found")
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(HealthCheckLog)
+            .filter(HealthCheckLog.service_name == service)
+            .order_by(desc(HealthCheckLog.checked_at), desc(HealthCheckLog.id))
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "service": row.service_name,
+                "result": row.result,
+                "status": row.state,
+                "state": row.state,
+                "response_ms": row.response_ms,
+                "failure_count": row.consecutive_failures,
+                "consecutive_failures": row.consecutive_failures,
+                "error": row.error,
+                "check_type": row.check_type,
+                "checked_at": row.checked_at.isoformat() if row.checked_at else None,
+            }
+            for row in rows
+        ]
+    finally:
+        db.close()
+
+
+@app.get("/api/overview")
+def dashboard_overview():
+    db = SessionLocal()
+    try:
+        requests = db.query(RequestLog).all()
+        incidents = db.query(Incident).all()
+        services = db.query(ServiceHealth).all()
+        healthy = sum(
+            1
+            for row in services
+            if (row.status or "").lower() in ("healthy", "ok", "up", "ready")
+        )
+        settings = get_settings()
+        recovered = sum(
+            1
+            for row in requests
+            if (row.final_status or "").lower() in ("recovered", "processed")
+        )
+        return {
+            "health_score": round(100 * healthy / len(services)) if services else None,
+            "requests_processed": len(requests),
+            "active_incidents": sum(
+                1
+                for item in incidents
+                if (item.status or "").lower() not in ("resolved", "closed", "verified")
+            ),
+            "failover_events": sum(
+                1 for row in requests if (row.active_server or "").lower() == "backup"
+            ),
+            "latest_failover": (
+                settings["active_server"]
+                if settings["active_server"] == "backup"
+                else None
+            ),
+            "verification_success": (
+                round(100 * recovered / len(requests), 1) if requests else None
+            ),
+            "lifecycle": {
+                "monitor": (
+                    "active"
+                    if settings["monitoring_enabled"] and settings["shield_enabled"]
+                    else "paused"
+                )
+            },
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/requests/stats")
+def dashboard_request_stats(origin: str | None = None):
+    db = SessionLocal()
+    try:
+        rows = db.query(RequestLog).all()
+        if origin and origin != "all":
+            rows = [row for row in rows if _origin(row) == origin]
+        statuses = [(row.final_status or "").lower() for row in rows]
+        return {
+            "total": len(rows),
+            "success": sum(value == "processed" for value in statuses),
+            "corrected": sum(value == "corrected" for value in statuses),
+            "rejected": sum(value == "rejected" for value in statuses),
+            "pending": sum(value == "pending" for value in statuses),
+            "failed": sum(value == "failed" for value in statuses),
+            "recovered": sum(value == "recovered" for value in statuses),
+        }
+    finally:
+        db.close()
+
 
 @app.get("/api/requests")
-def list_requests():
+def list_requests(
+    limit: int = Query(default=50, ge=1, le=500),
+    page: int = Query(default=1, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=500),
+    status: str | None = None,
+    origin: str | None = None,
+    q: str | None = None,
+    sort: str = "created_at",
+    order: str = "desc",
+    date_from: str | None = None,
+    date_to: str | None = None,
+):
     db = SessionLocal()
     try:
         rows = (
@@ -759,153 +542,499 @@ def list_requests():
             .order_by(desc(RequestLog.created_at), desc(RequestLog.id))
             .all()
         )
-<<<<<<< HEAD
-=======
-
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
+        data = [_request_json(row) for row in rows]
+        if origin and origin != "all":
+            data = [item for item in data if item["origin"] == origin]
+        if status:
+            data = [item for item in data if item["final_status"] == status.upper()]
+        if q:
+            needle = q.lower()
+            data = [
+                item
+                for item in data
+                if needle
+                in (item["request_id"] + str(item["detected_issue"] or "")).lower()
+            ]
+        if date_from:
+            data = [
+                item
+                for item in data
+                if item["received_at"] and item["received_at"][:10] >= date_from
+            ]
+        if date_to:
+            data = [
+                item
+                for item in data
+                if item["received_at"] and item["received_at"][:10] <= date_to
+            ]
+        allowed_sort = {
+            "request_id",
+            "created_at",
+            "received_at",
+            "final_status",
+            "validation_status",
+        }
+        if sort in allowed_sort:
+            data.sort(
+                key=lambda item: str(item.get(sort) or ""),
+                reverse=order.lower() != "asc",
+            )
+        total = len(data)
+        size = page_size or limit
+        start = (page - 1) * size
         return {
-            "total": len(rows),
-            "items": [
-                {
-<<<<<<< HEAD
-                    "id": row.id,
-                    "request_id": row.request_id,
-                    "created_at": (
-                        row.created_at.isoformat() if row.created_at else None
-                    ),
-                    "event_type": row.event_type,
-                    "source": row.source,
-                    "active_server": row.active_server,
-                    "validation_status": row.validation_status,
-                    "final_status": row.final_status,
-                    "processing_stage": row.processing_stage,
-                    "payload": row.payload,
-                    "recovery_action": row.recovery_action,
-                    "error_message": row.error_message,
-                    "duration_ms": row.duration_ms,
-                }
-                for row in rows
-=======
-                    "id": r.id,
-                    "request_id": r.request_id,
-                    "created_at": r.created_at.isoformat() if r.created_at else None,
-                    "event_type": r.event_type,
-                    "source": r.source,
-                    "active_server": r.active_server,
-                    "validation_status": r.validation_status,
-                    "final_status": r.final_status,
-                    "processing_stage": r.processing_stage,
-                    "payload": r.payload,
-                    "recovery_action": r.recovery_action,
-                    "error_message": r.error_message,
-                    "duration_ms": r.duration_ms,
-                }
-                for r in rows
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-            ],
+            "total": total,
+            "items": data[start : start + size],
+            "data": data[start : start + size],
+            "meta": {"total": total},
         }
     finally:
         db.close()
 
 
-<<<<<<< HEAD
-@app.get("/api/overview")
-def dashboard_overview():
-    """Real overview metrics derived from PostgreSQL request and incident logs."""
+@app.get("/api/requests/{request_id}/history")
+def request_history(request_id: str):
     db = SessionLocal()
     try:
-        requests = db.query(RequestLog).all()
-        incidents = db.query(Incident).all()
-        total = len(requests)
-        recovered = sum(1 for r in requests if (r.final_status or "").lower() in ("recovered", "processed"))
-        health_rows = db.execute(text("SELECT service_name, status, last_error, updated_at FROM service_health ORDER BY service_name")).mappings().all()
-        healthy = sum(1 for r in health_rows if str(r["status"]).lower() in ("healthy", "ok", "up", "ready"))
-        score = round(100 * healthy / len(health_rows)) if health_rows else None
-        return {"health_score": score, "requests_processed": total,
-                "active_incidents": sum(1 for i in incidents if (i.status or "").lower() not in ("resolved", "closed", "verified")),
-                "failover_events": sum(1 for r in requests if (r.active_server or "").lower() == "backup"),
-                "verification_success": round(100 * recovered / total, 1) if total else None,
-                "servers": [dict(r) for r in health_rows]}
+        row = db.query(RequestLog).filter_by(request_id=request_id).first()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Request not found")
+        return [
+            {
+                "event_type": row.event_type,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "details": row.recovery_action or row.error_message,
+            }
+        ]
     finally:
         db.close()
 
-@app.get("/api/servers")
-def dashboard_servers():
+
+@app.get("/api/requests/{request_id}")
+def get_request(request_id: str):
     db = SessionLocal()
     try:
-        rows = db.execute(text("SELECT service_name, status, last_error, updated_at FROM service_health ORDER BY service_name")).mappings().all()
-        return [{"id": r["service_name"], "name": r["service_name"], "role": "primary" if "primary" in r["service_name"].lower() or "a" == r["service_name"].lower() else "backup", "health": r["status"], "readiness": r["status"], "last_check_at": r["updated_at"].isoformat() if r["updated_at"] else None, "last_error": r["last_error"], "active": str(r["status"]).lower() in ("healthy", "ok", "up", "ready")} for r in rows]
+        row = db.query(RequestLog).filter_by(request_id=request_id).first()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Request not found")
+        return _request_json(row)
     finally:
         db.close()
 
-@app.get("/api/requests/stats")
-def dashboard_request_stats(origin: str | None = None):
-    db = SessionLocal()
-    try:
-        rows = db.query(RequestLog).all()
-        if origin and origin != "all": rows = [r for r in rows if ("simulation" if r.request_type == "simulation" else "operational") == origin]
-        status = lambda s: sum(1 for r in rows if (r.final_status or "").upper() == s)
-        return {"total": len(rows), "success": status("PROCESSED"), "corrected": status("CORRECTED"), "rejected": status("REJECTED"), "pending": status("PENDING"), "failed": status("FAILED"), "recovered": status("RECOVERED")}
-    finally: db.close()
 
 @app.get("/api/incidents")
 def dashboard_incidents():
     db = SessionLocal()
     try:
         rows = db.query(Incident).order_by(desc(Incident.created_at)).all()
-        return [{"incident_id": f"INC-{r.id}", "id": r.id, "detected_at": r.created_at.isoformat() if r.created_at else None, "created_at": r.created_at.isoformat() if r.created_at else None, "title": r.incident_type, "incident_type": r.incident_type, "server": r.affected_service, "affected_service": r.affected_service, "severity": r.severity, "status": r.status, "description": r.description, "recovery_action": r.recovery_action, "recovery_result": r.recovery_action} for r in rows]
-    finally: db.close()
+        return [_incident_json(row) for row in rows]
+    finally:
+        db.close()
+
 
 @app.get("/api/logs")
-def dashboard_logs(page_size: int = 50, page: int = 1):
+def dashboard_logs(
+    page_size: int = Query(default=50, ge=1, le=500),
+    page: int = Query(default=1, ge=1),
+    origin: str | None = None,
+    category: str | None = None,
+    severity: str | None = None,
+    q: str | None = None,
+    request_id: str | None = None,
+    incident_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+):
     db = SessionLocal()
     try:
-        rows = db.query(RequestLog).order_by(desc(RequestLog.created_at), desc(RequestLog.id)).all()
-        data = [{"id": r.id, "timestamp": r.created_at.isoformat() if r.created_at else None, "created_at": r.created_at.isoformat() if r.created_at else None, "category": r.event_type, "severity": "warning" if (r.error_message or r.final_status in ("failed", "rejected")) else "info", "source": r.source, "request_id": r.request_id, "action": r.recovery_action, "outcome": r.final_status, "message": r.error_message or r.recovery_action} for r in rows]
-        size = max(1, min(page_size, 500)); page = max(1, page)
-        return {"data": data[(page-1)*size:page*size], "items": data[(page-1)*size:page*size], "meta": {"total": len(data), "all": len(data)}}
-    finally: db.close()
-=======
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
-
-@app.get("/api/requests/{request_id}")
-def get_request(request_id: str):
-    db = SessionLocal()
-    try:
-<<<<<<< HEAD
-        row = (
+        request_rows = (
             db.query(RequestLog)
-            .filter(RequestLog.request_id == request_id)
-            .first()
+            .order_by(desc(RequestLog.created_at), desc(RequestLog.id))
+            .all()
         )
-        if not row:
-            raise HTTPException(status_code=404, detail="Request not found")
-
+        incident_rows = (
+            db.query(Incident)
+            .order_by(desc(Incident.created_at), desc(Incident.id))
+            .all()
+        )
+        events = [
+            {
+                "id": row.id,
+                "event_id": f"EV-{row.id}",
+                "timestamp": row.created_at.isoformat() if row.created_at else None,
+                "category": row.event_type,
+                "severity": (
+                    "warning"
+                    if row.error_message or row.final_status in ("failed", "rejected")
+                    else "info"
+                ),
+                "source": row.source,
+                "server": row.active_server,
+                "request_id": row.request_id,
+                "action": row.recovery_action,
+                "outcome": row.final_status,
+                "message": row.error_message or row.recovery_action,
+                "origin": _origin(row),
+            }
+            for row in request_rows
+        ]
+        events.extend(
+            {
+                "id": row.id,
+                "event_id": f"INC-{row.id}",
+                "timestamp": row.created_at.isoformat() if row.created_at else None,
+                "category": "incident",
+                "severity": row.severity,
+                "source": row.affected_service,
+                "server": row.affected_service,
+                "incident_id": f"INC-{row.id}",
+                "action": row.recovery_action,
+                "outcome": row.status,
+                "message": row.description,
+                "origin": (
+                    "simulation" if "simulation" in row.incident_type else "operational"
+                ),
+            }
+            for row in incident_rows
+        )
+        events.sort(key=lambda item: item["timestamp"] or "", reverse=True)
+        if origin and origin != "all":
+            events = [item for item in events if item["origin"] == origin]
+        if category:
+            events = [item for item in events if item["category"] == category]
+        if severity:
+            events = [item for item in events if item["severity"] == severity]
+        if request_id:
+            events = [item for item in events if item.get("request_id") == request_id]
+        if incident_id:
+            events = [item for item in events if item.get("incident_id") == incident_id]
+        if q:
+            needle = q.lower()
+            events = [item for item in events if needle in str(item).lower()]
+        if date_from:
+            events = [
+                item
+                for item in events
+                if item["timestamp"] and item["timestamp"][:10] >= date_from
+            ]
+        if date_to:
+            events = [
+                item
+                for item in events
+                if item["timestamp"] and item["timestamp"][:10] <= date_to
+            ]
+        total = len(events)
+        start = (page - 1) * page_size
+        counts = {}
+        for item in events:
+            counts[item["category"]] = counts.get(item["category"], 0) + 1
+        page_data = events[start : start + page_size]
         return {
-            "request_id": row.request_id,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-            "event_type": row.event_type,
-            "source": row.source,
-            "active_server": row.active_server,
-            "validation_status": row.validation_status,
-            "final_status": row.final_status,
-            "processing_stage": row.processing_stage,
-            "payload": row.payload,
-            "recovery_action": row.recovery_action,
-            "error_message": row.error_message,
-            "duration_ms": row.duration_ms,
+            "data": page_data,
+            "items": page_data,
+            "meta": {
+                "total": total,
+                "all": len(request_rows) + len(incident_rows),
+                "counts": counts,
+            },
         }
     finally:
         db.close()
-=======
-        row = db.query(RequestLog).filter(RequestLog.request_id == request_id).first()
-        if not row:
-            raise HTTPException(status_code=404, detail="Request not found")
-        return {"request_id": row.request_id, "created_at": row.created_at.isoformat() if row.created_at else None,
-                "event_type": row.event_type, "source": row.source, "active_server": row.active_server,
-                "validation_status": row.validation_status, "final_status": row.final_status,
-                "processing_stage": row.processing_stage, "payload": row.payload,
-                "recovery_action": row.recovery_action, "error_message": row.error_message, "duration_ms": row.duration_ms}
-    finally:
-        db.close()
->>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
+
+
+@app.post("/api/shield/validate-request")
+def validate_request(payload: RequestValidationPayload):
+    started = time.perf_counter()
+    request_id = str(uuid.uuid4())
+    guard = RequiredFieldsGuard.validate(payload.data, payload.required_fields)
+    validator = (
+        validate_request_data(payload.data, tuple(payload.required_fields))
+        if guard["valid"]
+        else None
+    )
+    errors = [] if guard["valid"] else [guard["error"]]
+    if validator and not validator["valid"]:
+        errors.extend(validator["errors"])
+    rejected = bool(errors)
+    reason = (
+        "; ".join(errors) if errors else "Required fields and request data validated."
+    )
+    action = (
+        "Rejected invalid request; data was not forwarded."
+        if rejected
+        else "Validated data is ready for processing."
+    )
+    safe = _safe_payload(
+        validator["cleaned_data"] if validator and validator["valid"] else payload.data
+    )
+    _record_request(
+        request_id=request_id,
+        request_type="field_validation",
+        event_type="validation_rejected" if rejected else "field_validation",
+        source="shield.validate-request",
+        active_server=None,
+        shield_enabled=1,
+        validation_status="rejected" if rejected else "passed",
+        final_status="rejected" if rejected else "processed",
+        processing_stage="Contain" if rejected else "Verify",
+        payload=safe,
+        recovery_action=action,
+        error_message=reason if rejected else None,
+        duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
+    )
+    if rejected:
+        _record_incident(
+            "validation_rejected", "shield.validate-request", "rejected", action
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={"decision": "reject", "reason": reason, "request_id": request_id},
+        )
+    return {
+        "decision": "allow",
+        "reason": reason,
+        "request_id": request_id,
+        "validated_data": validator["cleaned_data"],
+    }
+
+
+@app.post("/api/shield/validate-age")
+def validate_age(payload: AgeValidationPayload):
+    started = time.perf_counter()
+    value = payload.age
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        result = {
+            "decision": "reject",
+            "stage": "input_validation",
+            "reason": "Age must be an integer or supported number word.",
+        }
+    else:
+        try:
+            age = int(value.strip()) if isinstance(value, str) else value
+            result = (
+                {"decision": "allow", "stage": "input_validation", "age": age}
+                if 0 <= age <= 130
+                else {
+                    "decision": "reject",
+                    "stage": "input_validation",
+                    "reason": "Age must be between 0 and 130.",
+                }
+            )
+        except ValueError:
+            result = {
+                "decision": "reject",
+                "stage": "input_validation",
+                "reason": "Age must be numeric.",
+            }
+    rejected = result["decision"] == "reject"
+    _record_request(
+        request_id=str(uuid.uuid4()),
+        request_type="age_validation",
+        event_type="age_validation",
+        source="shield.validate-age",
+        active_server=None,
+        shield_enabled=1,
+        validation_status="rejected" if rejected else "passed",
+        final_status="rejected" if rejected else "processed",
+        processing_stage="Contain" if rejected else "Verify",
+        payload={"age": str(value)[:80]},
+        recovery_action="Invalid age rejected." if rejected else "Age accepted.",
+        error_message=result.get("reason"),
+        duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
+    )
+    if rejected:
+        raise HTTPException(status_code=400, detail=result)
+    return result
+
+
+@app.post("/api/simulation/run")
+def run_legacy_simulation(payload: LegacySimulationPayload):
+    started = time.perf_counter()
+    request_id = str(uuid.uuid4())
+    settings = get_settings()
+    shield_enabled = settings["shield_enabled"]
+    event = payload.event_type
+    status = "processed"
+    validation = "bypassed" if not shield_enabled else "passed"
+    active_server = settings["active_server"]
+    stage = "Verify"
+    error = None
+    action = "Diagnostic simulation completed; no physical failover was performed."
+    test_data = _safe_payload(payload.data)
+    if event == "validRequest" and shield_enabled:
+        checked = validate_request_data(payload.data)
+        if not checked["valid"]:
+            status = "rejected"
+            validation = "rejected"
+            stage = "Contain"
+            active_server = None
+            error = "; ".join(checked["errors"])
+            action = "Invalid test request rejected by the production validator."
+        else:
+            test_data = _safe_payload(checked["cleaned_data"])
+    elif event == "missingField" and shield_enabled:
+        test_data.pop("email", None)
+        checked = RequiredFieldsGuard.validate(test_data, ["name", "email"])
+        status = "rejected" if not checked["valid"] else "processed"
+        validation = "rejected" if not checked["valid"] else "passed"
+        stage = "Contain" if status == "rejected" else "Verify"
+        error = checked.get("error")
+    elif event == "sourceDown" and shield_enabled:
+        unavailable = (
+            payload.source if payload.source in ("primary", "backup") else "primary"
+        )
+        active_server = "backup" if unavailable == "primary" else "primary"
+        status = "recovered"
+        stage = "Recover"
+        action = (
+            f"Simulated {unavailable} unavailable; selected simulated {active_server}."
+        )
+    elif event != "validRequest":
+        status = "recovered" if shield_enabled else "failed"
+        validation = "simulated" if shield_enabled else "bypassed"
+        stage = "Recover" if shield_enabled else "Detect"
+        active_server = "backup" if shield_enabled else None
+        error = (
+            None
+            if shield_enabled
+            else f"Shield disabled during diagnostic event: {event}"
+        )
+        action = (
+            "Simulated event completed; result does not represent physical failover."
+        )
+    _record_request(
+        request_id=request_id,
+        request_type="simulation",
+        event_type=event,
+        source=payload.source,
+        active_server=active_server,
+        shield_enabled=int(shield_enabled),
+        validation_status=validation,
+        final_status=status,
+        processing_stage=stage,
+        payload=test_data,
+        recovery_action=action,
+        error_message=error,
+        duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
+    )
+    if event != "validRequest" or status != "processed":
+        _record_incident(event, payload.source, status, action)
+    return {
+        "request_id": request_id,
+        "event_type": event,
+        "source": payload.source,
+        "active_server": active_server,
+        "validation_status": validation,
+        "final_status": status,
+        "processing_stage": stage,
+        "recovery_action": action,
+        "error_message": error,
+        "logged_to_postgresql": True,
+    }
+
+
+@app.get("/api/simulations/scenarios")
+def simulation_scenarios():
+    return {
+        "data": SCENARIOS,
+        "total": len(SCENARIOS),
+        "max_requests": MAX_REQUESTS,
+        "max_concurrency": MAX_CONCURRENCY,
+    }
+
+
+@app.post("/api/simulations")
+def start_simulation(payload: SimulationStartPayload):
+    config = payload.config.copy()
+    limits = {
+        "request_count": (1, MAX_REQUESTS),
+        "concurrency": (1, MAX_CONCURRENCY),
+        "queue_capacity": (1, MAX_REQUESTS),
+        "failure_threshold": (1, 10),
+    }
+    validated = {}
+    for key, value in config.items():
+        if key not in limits:
+            raise HTTPException(
+                status_code=422, detail=f"Unsupported simulation setting: {key}"
+            )
+        low, high = limits[key]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or not low <= value <= high
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"{key} must be an integer between {low} and {high}",
+            )
+        validated[key] = value
+    if "failure_threshold" in validated:
+        update_settings(failure_threshold=validated["failure_threshold"])
+    try:
+        return start_run(payload.scenario_id, validated)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except SQLAlchemyError as exc:
+        logger.exception("Could not start simulation")
+        raise HTTPException(
+            status_code=503, detail="Simulation could not be saved to PostgreSQL."
+        ) from exc
+
+
+@app.get("/api/simulations/history")
+def simulation_history(limit: int = Query(default=50, ge=1, le=200)):
+    items = list_runs(limit)
+    return {"data": items, "items": items, "total": len(items)}
+
+
+@app.get("/api/simulations")
+def list_simulations(limit: int = Query(default=50, ge=1, le=200)):
+    items = list_runs(limit)
+    return {"data": items, "items": items, "total": len(items)}
+
+
+@app.get("/api/simulations/{run_id}")
+def simulation_result(run_id: str):
+    result = get_run(run_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Simulation run not found")
+    return result
+
+
+@app.post("/api/simulations/{run_id}/stop")
+def stop_simulation(run_id: str):
+    result = stop_run(run_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Simulation run not found")
+    return result
+
+
+@app.post("/api/simulations/reset")
+def reset_simulations():
+    try:
+        deleted = reset_history()
+        for service in ("primary", "backup"):
+            set_service_mode(service, "healthy")
+        settings = update_settings(
+            active_server="primary", primary_load_pct=0, backup_load_pct=0
+        )
+        check_services_once()
+        return {
+            "deleted_simulation_runs": deleted,
+            "request_logs_deleted": 0,
+            "incidents_deleted": 0,
+            "settings": settings,
+        }
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Simulation reset failed")
+        raise HTTPException(
+            status_code=503, detail="Simulation state could not be reset."
+        ) from exc
+
+
+@app.get("/api/overview/health")
+def overview_health():
+    return {"monitor": _monitor_summary(get_settings()), "database": health_check()}
