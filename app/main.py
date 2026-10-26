@@ -1,12 +1,17 @@
 import logging
 import time
 import uuid
+<<<<<<< HEAD
 from contextlib import asynccontextmanager
+=======
+from datetime import datetime, timezone
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+<<<<<<< HEAD
 from sqlalchemy import desc, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -56,6 +61,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+=======
+from sqlalchemy import text, desc
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.database import engine, SessionLocal, Base
+from app.models import Incident, RequestLog
+from app.shield.controller import ShieldController
+
+logger = logging.getLogger("chronoguard")
+app = FastAPI(title="ChronoGuard API", description="Self-Healing Dependency Guardian", version="1.1.0")
+# Supports local frontend testing via VS Code Live Server and localhost.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5500", "http://localhost:5500", "http://127.0.0.1:5501", "http://localhost:5501", "null"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
 shield = ShieldController()
 
 
@@ -70,6 +94,7 @@ class AgeValidationPayload(BaseModel):
 
 class SimulationPayload(BaseModel):
     event_type: str = Field(
+<<<<<<< HEAD
         pattern="^(validRequest|badTimestamp|sourceDown|missingField|exception|retryLoop)$"
     )
     source: str = Field(pattern="^(client|app|primary|backup)$")
@@ -84,6 +109,17 @@ class SimulationPayload(BaseModel):
 
 def _record_request(**values) -> None:
     """Persist a request log to PostgreSQL."""
+=======
+    pattern="^(validRequest|badTimestamp|sourceDown|missingField|exception|retryLoop)$"
+)
+    source: str = Field(pattern="^(client|app|primary|backup)$")
+    shield_enabled: bool = True
+    data: dict[str, Any] = Field(default_factory=lambda: {"name": "Demo User", "email": "demo@example.com"})
+
+
+def _record_request(**values) -> None:
+    """Persist a request independently; failures are logged rather than hidden."""
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
     db = SessionLocal()
     try:
         db.add(RequestLog(**values))
@@ -96,6 +132,7 @@ def _record_request(**values) -> None:
         db.close()
 
 
+<<<<<<< HEAD
 def _record_incident(
     event_type: str,
     source: str,
@@ -116,6 +153,19 @@ def _record_incident(
                 recovery_action=action,
             )
         )
+=======
+def _record_incident(event_type: str, source: str, final_status: str, action: str) -> None:
+    db = SessionLocal()
+    try:
+        db.add(Incident(
+            incident_type=event_type,
+            affected_service=source,
+            severity="high" if final_status == "failed" else "medium",
+            status=final_status,
+            description=f"Simulation event '{event_type}' began at {source}.",
+            recovery_action=action,
+        ))
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
         db.commit()
     except Exception:
         db.rollback()
@@ -124,6 +174,7 @@ def _record_incident(
         db.close()
 
 
+<<<<<<< HEAD
 def _safe_payload(data: dict[str, Any]) -> dict[str, Any]:
     """Exclude common secret fields from persisted payloads."""
     secret_names = (
@@ -147,6 +198,11 @@ def root():
         "status": "healthy",
         "version": "1.1.0",
     }
+=======
+@app.get("/")
+def root():
+    return {"message": "ChronoGuard API is running", "status": "healthy", "version": "1.1.0"}
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
 
 
 @app.get("/api/health")
@@ -157,16 +213,21 @@ def health_check():
         return {"api": "healthy", "database": "connected"}
     except Exception as exc:
         logger.exception("Health check failed")
+<<<<<<< HEAD
         raise HTTPException(
             status_code=503,
             detail={"api": "running", "database": "disconnected"},
         ) from exc
+=======
+        raise HTTPException(status_code=503, detail={"api": "running", "database": "disconnected"}) from exc
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
 
 
 @app.post("/api/shield/validate-request")
 def validate_request(payload: RequestValidationPayload):
     started = time.perf_counter()
     request_id = str(uuid.uuid4())
+<<<<<<< HEAD
 
     # First check that required fields exist and are text.
     guard_result = RequiredFieldsGuard.validate(
@@ -235,12 +296,36 @@ def validate_request(payload: RequestValidationPayload):
                     recovery_action=action,
                 )
             )
+=======
+    result = shield.validate_request(payload.data, payload.required_fields)
+    rejected = result["decision"] == "reject"
+    action = "Incomplete data was not forwarded." if rejected else "Required fields passed validation."
+    safe_payload = {k: v for k, v in payload.data.items() if not any(s in k.lower() for s in ("password", "token", "secret", "authorization", "api_key"))}
+    _record_request(
+        request_id=request_id, request_type="field_validation", event_type="missing_required_fields" if rejected else "field_validation",
+        source="shield.validate-request", active_server=None, shield_enabled=1,
+        validation_status="rejected" if rejected else "passed", final_status="rejected" if rejected else "processed",
+        processing_stage="Contain" if rejected else "Verify", payload=safe_payload, recovery_action=action,
+        error_message=result.get("reason") if rejected else None,
+        duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
+    )
+    if rejected:
+        db = SessionLocal()
+        try:
+            db.add(Incident(
+                incident_type="missing_required_fields", affected_service="shield.validate-request",
+                severity="medium", status="rejected",
+                description=f"Request rejected; missing fields: {result.get('missing_fields', [])}",
+                recovery_action=action,
+            ))
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
             db.commit()
         except Exception:
             db.rollback()
             logger.exception("Failed to save validation incident")
         finally:
             db.close()
+<<<<<<< HEAD
 
         raise HTTPException(
             status_code=400,
@@ -259,6 +344,10 @@ def validate_request(payload: RequestValidationPayload):
         "request_id": request_id,
         "validated_data": validator_result["cleaned_data"],
     }
+=======
+        raise HTTPException(status_code=400, detail={**result, "request_id": request_id})
+    return {**result, "request_id": request_id}
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
 
 
 @app.post("/api/shield/validate-age")
@@ -267,6 +356,7 @@ def validate_age(payload: AgeValidationPayload):
     request_id = str(uuid.uuid4())
     result = shield.validate_age(payload.age)
     rejected = result["decision"] == "reject"
+<<<<<<< HEAD
 
     action = (
         "Invalid age input rejected before processing."
@@ -296,23 +386,44 @@ def validate_age(payload: AgeValidationPayload):
             detail={**result, "request_id": request_id},
         )
 
+=======
+    action = "Invalid age input rejected before processing." if rejected else "Age normalized and accepted."
+    _record_request(
+        request_id=request_id, request_type="age_validation", event_type="age_validation",
+        source="shield.validate-age", active_server=None, shield_enabled=1,
+        validation_status="rejected" if rejected else "passed", final_status="rejected" if rejected else "processed",
+        processing_stage="Contain" if rejected else "Verify", payload={"age": str(payload.age)[:80]},
+        recovery_action=action, error_message=result.get("reason") if rejected else None,
+        duration_ms=max(0, int((time.perf_counter() - started) * 1000)),
+    )
+    if rejected:
+        raise HTTPException(status_code=400, detail={**result, "request_id": request_id})
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
     return {**result, "request_id": request_id}
 
 
 @app.post("/api/simulation/run")
 def run_simulation(payload: SimulationPayload):
+<<<<<<< HEAD
     """Run a simulated fault, validate requests, and log the outcome."""
+=======
+    """Run one deterministic simulated fault and persist its outcome in PostgreSQL."""
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
     started = time.perf_counter()
     request_id = str(uuid.uuid4())
     event = payload.event_type
     source = payload.source
+<<<<<<< HEAD
 
+=======
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
     action = "No failover required; request processed on the primary path."
     active_server: Optional[str] = "primary"
     validation_status = "passed"
     final_status = "processed"
     stage = "Verify"
     error_message = None
+<<<<<<< HEAD
     data_to_log = _safe_payload(payload.data)
 
     try:
@@ -358,6 +469,35 @@ def run_simulation(payload: SimulationPayload):
                 action = (
                     "Demo request processed without validation because "
                     "the shield is disabled."
+=======
+
+    
+    try:
+        if event == "validRequest":
+            if payload.shield_enabled:
+                checked = shield.validate_request(payload.data, ["name", "email"])
+
+                if checked["decision"] == "reject":
+                    validation_status = "rejected"
+                    final_status = "rejected"
+                    stage = "Contain"
+                    action = "Rejected incomplete request; invalid data was not forwarded."
+                    error_message = checked.get("reason")
+                else:
+                    validation_status = "passed"
+                    final_status = "processed"
+                    stage = "Verify"
+                    active_server = "primary"
+                    action = "Required fields passed validation; valid request processed on the primary path."
+            else:
+                validation_status = "bypassed"
+                final_status = "processed"
+                stage = "Verify"
+                active_server = "primary"
+                action = (
+                    "Valid demo payload processed on the primary path without "
+                    "ChronoGuard validation because the shield is disabled."
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
                 )
 
         elif not payload.shield_enabled:
@@ -372,6 +512,7 @@ def run_simulation(payload: SimulationPayload):
             error_message = f"Shield disabled during simulated event: {event}"
 
         elif event == "missingField":
+<<<<<<< HEAD
             test_data = dict(payload.data)
             test_data.pop("email", None)
             checked = RequiredFieldsGuard.validate(
@@ -382,13 +523,31 @@ def run_simulation(payload: SimulationPayload):
             final_status = "rejected" if not checked["valid"] else "processed"
             stage = "Contain" if final_status == "rejected" else "Verify"
             active_server = None if final_status == "rejected" else "primary"
+=======
+            data = dict(payload.data)
+            data.pop("email", None)
+            checked = shield.validate_request(data, ["name", "email"])
+            validation_status = (
+                "rejected" if checked["decision"] == "reject" else "passed"
+            )
+            final_status = (
+                "rejected" if validation_status == "rejected" else "processed"
+            )
+            stage = "Contain" if final_status == "rejected" else "Verify"
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
             action = (
                 "Rejected incomplete payload; invalid data was not forwarded."
                 if final_status == "rejected"
                 else "Required fields passed validation."
             )
+<<<<<<< HEAD
             error_message = checked.get("error") if final_status == "rejected" else None
             data_to_log = _safe_payload(test_data)
+=======
+            error_message = (
+                checked.get("reason") if final_status == "rejected" else None
+            )
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
 
         elif event == "sourceDown":
             failed = source if source in ("primary", "backup") else "primary"
@@ -417,8 +576,13 @@ def run_simulation(payload: SimulationPayload):
             stage = "Recover"
             active_server = "backup"
             action = (
+<<<<<<< HEAD
                 "Caught the simulated application exception; routed "
                 "processing through the backup path."
+=======
+                "Caught the simulated application exception; "
+                "routed processing through the backup path."
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
             )
             error_message = "Simulated application exception."
 
@@ -435,6 +599,25 @@ def run_simulation(payload: SimulationPayload):
 
         elapsed = max(0, int((time.perf_counter() - started) * 1000))
 
+<<<<<<< HEAD
+=======
+        # Store only demo payload fields; never credentials or secrets.
+        safe_payload = {
+            k: v
+            for k, v in payload.data.items()
+            if not any(
+                s in k.lower()
+                for s in (
+                    "password",
+                    "token",
+                    "secret",
+                    "authorization",
+                    "api_key",
+                )
+            )
+        }
+
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
         _record_request(
             request_id=request_id,
             request_type="simulation",
@@ -445,13 +628,22 @@ def run_simulation(payload: SimulationPayload):
             validation_status=validation_status,
             final_status=final_status,
             processing_stage=stage,
+<<<<<<< HEAD
             payload=data_to_log,
+=======
+            payload=safe_payload,
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
             recovery_action=action,
             error_message=error_message,
             duration_ms=elapsed,
         )
 
+<<<<<<< HEAD
         if event != "validRequest" or final_status != "processed":
+=======
+        # Normal requests are logged, but are not incidents.
+        if event != "validRequest":
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
             _record_incident(event, source, final_status, action)
 
         return {
@@ -482,7 +674,41 @@ def run_simulation(payload: SimulationPayload):
         ) from exc
 
     except Exception as exc:
+<<<<<<< HEAD
         logger.exception("Unexpected simulation error for %s", request_id)
+=======
+        logger.exception(
+            "Unexpected simulation error for request %s",
+            request_id,
+        )
+        elapsed = max(0, int((time.perf_counter() - started) * 1000))
+
+        # Best-effort durable record for unexpected failures.
+        try:
+            _record_request(
+                request_id=request_id,
+                request_type="simulation",
+                event_type=event,
+                source=source,
+                active_server=None,
+                shield_enabled=1 if payload.shield_enabled else 0,
+                validation_status="error",
+                final_status="failed",
+                processing_stage="Detect",
+                payload=payload.data,
+                recovery_action=(
+                    "No recovery action completed; inspect backend logs."
+                ),
+                error_message=str(exc)[:1000],
+                duration_ms=elapsed,
+            )
+        except Exception:
+            logger.exception(
+                "Unable to persist failure record for request %s",
+                request_id,
+            )
+
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
         raise HTTPException(
             status_code=500,
             detail={
@@ -492,6 +718,7 @@ def run_simulation(payload: SimulationPayload):
         ) from exc
 
 
+<<<<<<< HEAD
 @app.get("/api/monitor/status")
 def monitor_status():
     return {
@@ -520,6 +747,8 @@ def simulate_service(service: str, mode: str):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+=======
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
 
 @app.get("/api/requests")
 def list_requests():
@@ -530,10 +759,15 @@ def list_requests():
             .order_by(desc(RequestLog.created_at), desc(RequestLog.id))
             .all()
         )
+<<<<<<< HEAD
+=======
+
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
         return {
             "total": len(rows),
             "items": [
                 {
+<<<<<<< HEAD
                     "id": row.id,
                     "request_id": row.request_id,
                     "created_at": (
@@ -551,12 +785,30 @@ def list_requests():
                     "duration_ms": row.duration_ms,
                 }
                 for row in rows
+=======
+                    "id": r.id,
+                    "request_id": r.request_id,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "event_type": r.event_type,
+                    "source": r.source,
+                    "active_server": r.active_server,
+                    "validation_status": r.validation_status,
+                    "final_status": r.final_status,
+                    "processing_stage": r.processing_stage,
+                    "payload": r.payload,
+                    "recovery_action": r.recovery_action,
+                    "error_message": r.error_message,
+                    "duration_ms": r.duration_ms,
+                }
+                for r in rows
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
             ],
         }
     finally:
         db.close()
 
 
+<<<<<<< HEAD
 @app.get("/api/overview")
 def dashboard_overview():
     """Real overview metrics derived from PostgreSQL request and incident logs."""
@@ -613,11 +865,14 @@ def dashboard_logs(page_size: int = 50, page: int = 1):
         size = max(1, min(page_size, 500)); page = max(1, page)
         return {"data": data[(page-1)*size:page*size], "items": data[(page-1)*size:page*size], "meta": {"total": len(data), "all": len(data)}}
     finally: db.close()
+=======
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
 
 @app.get("/api/requests/{request_id}")
 def get_request(request_id: str):
     db = SessionLocal()
     try:
+<<<<<<< HEAD
         row = (
             db.query(RequestLog)
             .filter(RequestLog.request_id == request_id)
@@ -642,3 +897,15 @@ def get_request(request_id: str):
         }
     finally:
         db.close()
+=======
+        row = db.query(RequestLog).filter(RequestLog.request_id == request_id).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Request not found")
+        return {"request_id": row.request_id, "created_at": row.created_at.isoformat() if row.created_at else None,
+                "event_type": row.event_type, "source": row.source, "active_server": row.active_server,
+                "validation_status": row.validation_status, "final_status": row.final_status,
+                "processing_stage": row.processing_stage, "payload": row.payload,
+                "recovery_action": row.recovery_action, "error_message": row.error_message, "duration_ms": row.duration_ms}
+    finally:
+        db.close()
+>>>>>>> 0d0498095ed935b7d1ed932bff794720a6000c9c
