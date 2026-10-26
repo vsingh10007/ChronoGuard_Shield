@@ -1,0 +1,937 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="theme-color" content="#0a0c10">
+    <title>ChronoGuard | Self-Healing Dependency Guardian</title>
+    <style>
+        :root {
+            --bg: #0a0c10;
+            --s1: #12151b;
+            --s2: #181c24;
+            --bd: rgba(255, 255, 255, .09);
+            --tx: #e6e9ef;
+            --mu: #8b93a1;
+            --ac: #14b8a6;
+            --nl: #b6bdc9;
+            --tb: #000;
+            color-scheme: dark
+        }
+
+        [data-theme=light] {
+            --bg: #eef1f5;
+            --s1: #fff;
+            --s2: #f1f4f8;
+            --bd: rgba(15, 23, 42, .14);
+            --tx: #172033;
+            --mu: #566174;
+            --ac: #0d8f84;
+            --nl: #3b4658;
+            --tb: #172033;
+            color-scheme: light
+        }
+
+        [data-theme=light] .btn.p {
+            color: #fff
+        }
+
+        [data-theme=light] .logo {
+            color: #fff
+        }
+
+        svg text {
+            fill: var(--mu);
+            font-size: 10px
+        }
+
+        .ok {
+            --c: 34, 197, 94
+        }
+
+        .wa {
+            --c: 245, 158, 11
+        }
+
+        .co {
+            --c: 249, 115, 22
+        }
+
+        .cr {
+            --c: 239, 68, 68
+        }
+
+        .fa {
+            --c: 225, 29, 72
+        }
+
+        .in {
+            --c: 59, 130, 246
+        }
+
+        .ne {
+            --c: 107, 114, 128
+        }
+
+        .sim {
+            --c: 139, 92, 246
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--tx);
+            font: 14px/1.45 Inter, system-ui, sans-serif
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none
+        }
+
+        .app {
+            display: grid;
+            grid-template-columns: 232px minmax(0, 1fr);
+            min-height: 100vh
+        }
+
+        aside {
+            background: var(--s1);
+            border-right: 1px solid var(--bd);
+            padding: 16px 12px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            z-index: 30
+        }
+
+        .brand {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 4px 8px 14px
+        }
+
+        .logo {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: var(--ac);
+            color: #04201c;
+            display: grid;
+            place-items: center;
+            font-weight: 800
+        }
+
+        .brand small {
+            display: block;
+            color: var(--mu);
+            font-size: 11px
+        }
+
+        .grp {
+            color: var(--mu);
+            font-size: 12px;
+            padding: 12px 10px 4px
+        }
+
+        .nl {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 9px 10px;
+            border-radius: 10px;
+            color: var(--nl)
+        }
+
+        .nl:hover {
+            background: var(--s2)
+        }
+
+        .nl.act {
+            background: rgba(20, 184, 166, .15);
+            color: var(--tx);
+            box-shadow: inset 3px 0 var(--ac)
+        }
+
+        .env {
+            margin-top: auto;
+            font-size: 12px;
+            color: var(--mu);
+            padding: 8px 10px
+        }
+
+        header {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 28px 8px
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 28px;
+            letter-spacing: -.02em
+        }
+
+        .ht p {
+            margin: 4px 0 0;
+            color: var(--mu)
+        }
+
+        .hr {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center
+        }
+
+        .mu {
+            color: var(--mu)
+        }
+
+        .mb {
+            display: none
+        }
+
+        main {
+            padding: 12px 28px 40px;
+            outline: 0
+        }
+
+        .mono {
+            font-family: ui-monospace, Menlo, monospace;
+            font-size: 12px
+        }
+
+        .card {
+            background: var(--s1);
+            border: 1px solid var(--bd);
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 14px;
+            min-width: 0
+        }
+
+        .card h2 {
+            margin: 0 0 4px;
+            font-size: 16px
+        }
+
+        .kpis {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 12px;
+            margin-bottom: 14px
+        }
+
+        .kpi {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px
+        }
+
+        .kpi span {
+            color: var(--mu);
+            font-size: 13px
+        }
+
+        .kpi b {
+            font-size: 26px;
+            line-height: 1.2
+        }
+
+        .kpi small {
+            color: var(--mu)
+        }
+
+        .g2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 14px
+        }
+
+        .b {
+            display: inline-flex;
+            gap: 4px;
+            align-items: center;
+            padding: 2px 9px;
+            border-radius: 99px;
+            font-size: 12px;
+            font-weight: 600;
+            color: rgb(var(--c, 107, 114, 128));
+            background: rgba(var(--c, 107, 114, 128), .16);
+            white-space: nowrap
+        }
+
+        .b.fa {
+            outline: 1px dashed rgb(var(--c))
+        }
+
+        .btn {
+            background: var(--s2);
+            color: var(--tx);
+            border: 1px solid var(--bd);
+            border-radius: 9px;
+            padding: 7px 12px;
+            font: inherit;
+            cursor: pointer;
+            display: inline-flex;
+            gap: 6px;
+            align-items: center
+        }
+
+        .btn:hover {
+            border-color: var(--ac)
+        }
+
+        .btn:disabled {
+            opacity: .5;
+            cursor: not-allowed
+        }
+
+        .btn.p {
+            background: var(--ac);
+            color: #04201c;
+            border-color: var(--ac);
+            font-weight: 700
+        }
+
+        :focus-visible {
+            outline: 2px solid #5eead4;
+            outline-offset: 2px
+        }
+
+        input,
+        select {
+            background: var(--bg);
+            color: var(--tx);
+            border: 1px solid var(--bd);
+            border-radius: 9px;
+            padding: 7px 10px;
+            font: inherit;
+            min-width: 0
+        }
+
+        .tools {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 10px
+        }
+
+        .tools input[type=search] {
+            flex: 1;
+            min-width: 200px
+        }
+
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px
+        }
+
+        .chip {
+            border: 1px dashed var(--bd);
+            background: none;
+            color: var(--mu);
+            border-radius: 99px;
+            padding: 4px 12px;
+            cursor: pointer;
+            font: inherit
+        }
+
+        .chip.on {
+            border: 1px solid var(--ac);
+            color: var(--ac);
+            background: rgba(20, 184, 166, .1)
+        }
+
+        .tw {
+            overflow-x: auto
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse
+        }
+
+        th,
+        td {
+            padding: 9px 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--bd);
+            vertical-align: top
+        }
+
+        th {
+            color: var(--mu);
+            font-weight: 600;
+            font-size: 12px;
+            white-space: nowrap
+        }
+
+        td {
+            min-width: 80px
+        }
+
+        .th {
+            background: none;
+            border: 0;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+            padding: 0
+        }
+
+        tr[data-a] {
+            cursor: pointer
+        }
+
+        .row {
+            background: rgba(var(--c), .1)
+        }
+
+        .row td:first-child {
+            box-shadow: inset 3px 0 rgb(var(--c))
+        }
+
+        .bn {
+            padding: 9px 28px;
+            font-weight: 600;
+            color: rgb(var(--c));
+            background: rgba(var(--c), .14);
+            border-block: 1px solid rgba(var(--c), .3)
+        }
+
+        .ctr {
+            text-align: center;
+            padding: 36px 16px
+        }
+
+        .cnt {
+            margin: 2px 0 8px;
+            font-size: 12px
+        }
+
+        .pg {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: flex-end;
+            margin-top: 10px
+        }
+
+        .lc {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px
+        }
+
+        .st {
+            flex: 1;
+            min-width: 130px;
+            border: 1px solid var(--bd);
+            border-radius: 10px;
+            padding: 10px;
+            background: var(--s2)
+        }
+
+        .st small {
+            display: block;
+            color: var(--mu);
+            margin: 4px 0
+        }
+
+        .sw {
+            width: 46px;
+            height: 26px;
+            border-radius: 99px;
+            border: 0;
+            background: #4b5563;
+            position: relative;
+            cursor: pointer;
+            flex: none
+        }
+
+        .sw::after {
+            content: "";
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            transition: .15s
+        }
+
+        .sw[aria-checked=true] {
+            background: #16a34a
+        }
+
+        .sw[aria-checked=true]::after {
+            left: 23px
+        }
+
+        .bar {
+            height: 8px;
+            border-radius: 9px;
+            background: var(--s2);
+            overflow: hidden
+        }
+
+        .bar i {
+            display: block;
+            height: 100%;
+            background: var(--ac)
+        }
+
+        dl {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 6px 12px;
+            margin: 8px 0
+        }
+
+        dt {
+            color: var(--mu)
+        }
+
+        dd {
+            margin: 0;
+            word-break: break-word
+        }
+
+        .drw {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .55);
+            z-index: 50;
+            display: flex;
+            justify-content: flex-end
+        }
+
+        .drw[hidden] {
+            display: none
+        }
+
+        .dp {
+            width: min(520px, 100%);
+            background: var(--s1);
+            border-left: 1px solid var(--bd);
+            padding: 18px;
+            overflow: auto
+        }
+
+        .dh {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px
+        }
+
+        .dp h3 {
+            margin: 16px 0 4px;
+            font-size: 14px;
+            color: var(--ac)
+        }
+
+        #tst {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+            z-index: 60;
+            background: var(--tb);
+            color: #fff;
+            border: 1px solid var(--bd);
+            border-radius: 10px;
+            padding: 10px 14px;
+            opacity: 0;
+            transform: translateY(8px);
+            transition: .2s;
+            pointer-events: none;
+            max-width: 340px
+        }
+
+        #tst.on {
+            opacity: 1;
+            transform: none
+        }
+
+        @media(max-width:900px) {
+            .app {
+                grid-template-columns: 1fr
+            }
+
+            aside {
+                position: fixed;
+                inset: 0 auto 0 0;
+                width: 232px;
+                transform: translateX(-100%);
+                transition: transform .2s
+            }
+
+            aside.open {
+                transform: none
+            }
+
+            .mb {
+                display: inline-flex
+            }
+
+            header,
+            main {
+                padding-inline: 16px
+            }
+
+            .bn {
+                padding-inline: 16px
+            }
+
+            dl {
+                grid-template-columns: 110px 1fr
+            }
+        }
+
+        @media(prefers-reduced-motion:reduce) {
+            * {
+                transition: none !important;
+                animation: none !important
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <aside id="sb">
+            <div class="brand">
+                <div class="logo">CG</div>
+                <div><b>ChronoGuard</b><small>Self-Healing Dependency Guardian</small></div>
+            </div>
+            <nav id="nav" aria-label="Main"></nav>
+            <div class="env" id="env"></div>
+        </aside>
+        <div>
+            <header>
+                <div style="display:flex;gap:10px;align-items:center"><button class="btn mb" data-a="menu"
+                        aria-label="Open menu">☰</button>
+                    <div class="ht">
+                        <h1 id="t"></h1>
+                        <p id="d"></p>
+                    </div>
+                </div>
+                <div class="hr"><span class="b" id="cn">API: checking</span><span class="b" id="mp"></span><span
+                        class="mu" id="lr">Not refreshed yet</span><button class="btn" data-a="rf">⟳
+                        Refresh</button><button class="btn" id="th" data-a="th" aria-label="Switch to light mode">☀
+                        Light mode</button><label class="btn"><input type="checkbox" id="dm"> Demo data</label></div>
+            </header>
+            <div id="bn"></div>
+            <main id="v" tabindex="-1"></main>
+        </div>
+    </div>
+    <div class="drw" id="drw" hidden>
+        <div class="dp" id="dp" role="dialog" aria-modal="true" aria-label="Details" tabindex="-1"></div>
+    </div>
+    <div id="tst" role="status" aria-live="polite"></div>
+    <script>
+        /* API contract used (see section 8 of the master prompt): GET /api/health, /api/monitor/status, /api/servers, /api/servers/{id}/health-history,
+           /api/overview, /api/incidents, /api/requests(+/stats, /{id}, /{id}/history), /api/logs, /api/simulations; PUT /api/monitor/config {enabled};
+           POST /api/monitor/check, /api/simulations/floods, /api/simulations/{id}/stop, /api/simulations/validation-suites/{suite}/run {case,payload},
+           /api/simulations/resilience/{scenario}, /api/simulations/reset. List responses: array or {data|items:[],meta:{total}}. */
+        const $ = (s, e = document) => e.querySelector(s), esc = s => String(s ?? '—').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        const get = (o, ...k) => { for (const x of k) if (o && o[x] != null && o[x] !== '') return o[x]; return null };
+        const f = v => v == null || v === '' ? '—' : esc(v), na = '<span class="mu">Not Available</span>';
+        const list = r => Array.isArray(r) ? r : Array.isArray(r?.data) ? r.data : r?.items || [], mt = r => r?.meta?.total ?? r?.total ?? null;
+        const ts = v => { if (!v) return '—'; const d = new Date(v); return isNaN(d) ? esc(v) : `<time title="${d.toISOString()} (UTC)">${d.toLocaleString()}</time>` };
+        const qs = o => { const p = new URLSearchParams(Object.entries(o).filter(([, v]) => v !== '' && v != null)); return p.toString() ? '?' + p : '' };
+        const red = o => o == null ? null : JSON.stringify(o, (k, v) => /pass|secret|token|api.?key|cred/i.test(k) ? '[redacted]' : v), sh = (s, n = 44) => s && s.length > n ? s.slice(0, n) + '…' : s;
+        const opt = (a, c) => a.map(([v, l]) => `<option value="${v}"${v == c ? ' selected' : ''}>${l}</option>`).join('');
+        const pl = (t, k) => `<span class="b ${k}">${esc(t)}</span>`;
+        const hk = s => /^(healthy|ok|up|ready|available|verified)/i.test(s) ? 'ok' : /degraded|warn/i.test(s) ? 'wa' : /unhealthy|down|fail|crit/i.test(s) ? 'cr' : 'ne', hp = s => pl(s ?? 'Unknown', hk(s));
+        const sv = s => /crit|high/i.test(s) ? 'cr' : /warn|med/i.test(s) ? 'wa' : /low|info/i.test(s) ? 'in' : 'ne';
+        const K = { SUCCESS: 'ok', CORRECTED: 'co', REJECTED: 'cr', FAILED: 'fa', QUARANTINED: 'ne', PENDING: 'in', UNKNOWN: 'ne' }, IC = { SUCCESS: '✓', CORRECTED: '✎', REJECTED: '✕', FAILED: '!', QUARANTINED: '⚿', PENDING: '…', UNKNOWN: '?' };
+        const RS = s => { s = String(s || '').toUpperCase().replace(/[ -]/g, '_'); return K[s] && s !== 'PENDING' ? s : /^(PENDING|RECEIVED|VALIDATING|PROCESSING|AWAITING_RETRY|VERIFICATION_PENDING)$/.test(s) ? 'PENDING' : 'UNKNOWN' };
+        const rp = s => `<span class="b ${K[s]}">${IC[s]} ${s}</span>`, rst = r => RS(get(r, 'final_status', 'processing_status', 'status'));
+        const kpi = (l, v, s = '') => `<div class="card kpi"><span>${l}</span><b>${v == null ? na : esc(v)}</b><small>${s}</small></div>`;
+        const kv = a => `<dl>${a.map(([k, v]) => `<dt>${k}</dt><dd>${v == null || v === '' ? '—' : v}</dd>`).join('')}</dl>`;
+        const errBox = (t, m) => `<div class="card ctr"><b>${esc(t)}</b><p class="mu">${esc(m)}</p><button class="btn" data-a="rf">Retry</button></div>`, empty = m => `<div class="ctr mu">${m}</div>`;
+        const view = h => { $('#v').innerHTML = h };
+        const table = (cols, rows) => `<div class="tw"><table><thead><tr>${cols.map(c => Array.isArray(c) ? `<th><button class="th" data-a="rsort" data-k="${c[1]}">${c[0]}${S.q.sort == c[1] ? S.q.order == 'asc' ? ' ▲' : ' ▼' : ''}</button></th>` : `<th>${c}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+        const pager = (p, tot, n, a) => { const m = Math.max(1, Math.ceil((tot || 0) / n)); return `<div class="pg"><span class="mu">Page ${p} of ${m}</span><button class="btn" data-a="${a}" data-p="${p - 1}" ${p <= 1 ? 'disabled' : ''}>Prev</button><button class="btn" data-a="${a}" data-p="${p + 1}" ${p >= m ? 'disabled' : ''}>Next</button></div>` };
+        function toast(m, bad) { const t = $('#tst'); t.textContent = m; t.style.borderColor = bad ? '#ef4444' : '#14b8a6'; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 3800) }
+        let opener; function drawer(title, h) { opener = document.activeElement; $('#dp').innerHTML = `<div class="dh"><b>${title}</b><button class="btn" data-a="dx" aria-label="Close details">✕</button></div>${h}`; $('#drw').hidden = false; $('#dp').focus() }
+        function closeDr() { $('#drw').hidden = true; opener?.focus?.() }
+
+        /* ---------- demo data (clearly labelled; only used when "Demo data" is on) ---------- */
+        const NOW = Date.now(), iso = m => new Date(NOW - m * 6e4).toISOString(), D = { mon: true, last: iso(0) };
+        D.req = [['CG-1001', 'CORRECTED', 'Missing timezone information', '2026-10-26 10:30:00', '2026-10-26T10:30:00Z', 'Naive timestamp normalized to UTC (demo policy)'], ['CG-1002', 'REJECTED', 'Invalid timestamp format', 'not-a-valid-timestamp', null, 'Timestamp cannot be parsed safely'], ['CG-1003', 'SUCCESS'], ['CG-1004', 'SUCCESS'], ['CG-1005', 'REJECTED', 'Missing required field: email'], ['CG-1006', 'PENDING'], ['CG-1007', 'SUCCESS'], ['CG-1008', 'FAILED', 'Processing failed after validation'], ['CG-1009', 'CORRECTED', 'Email whitespace trimmed', ' a@b.co ', 'a@b.co', 'Trim policy'], ['CG-1010', 'SUCCESS'], ['CG-1011', 'UNKNOWN'], ['CG-1012', 'SUCCESS']].map((r, i) => ({ request_id: r[0], received_at: iso(i * 7 + 2), updated_at: iso(i * 7 + 1), original_payload: { name: 'Demo', email: 'user@example.com', timestamp: r[3] || '2026-10-26T10:30:00Z' }, validation_status: r[1] == 'REJECTED' ? 'FAILED' : 'PASSED', detected_issue: r[2] || null, correction_applied: r[1] == 'CORRECTED', original_value: r[3] || null, corrected_value: r[4] || null, correction_reason: r[5] || null, rejection_reason: r[1] == 'REJECTED' ? r[5] || r[2] : null, final_status: r[1], processing_server: /REJ|PEN/.test(r[1]) ? null : 'Server A', verification_status: /^(SUCCESS|CORRECTED)$/.test(r[1]) ? 'VERIFIED' : null, origin: i == 5 || i == 10 ? 'simulation' : 'operational' }));
+        D.logs = [...D.req.map((r, i) => ({ id: 'EV-' + (i + 10), timestamp: r.updated_at, category: { CORRECTED: 'correction', REJECTED: 'rejection', FAILED: 'validation' }[r.final_status] || 'validation', severity: /REJ|FAIL/.test(r.final_status) ? 'warning' : 'info', source: 'request-guardian', request_id: r.request_id, action: 'Request processed', outcome: r.final_status, message: r.detected_issue || 'Request validated', origin: r.origin })), ...[1, 6, 11].map((m, i) => ({ id: 'EV-' + i, timestamp: iso(m), category: 'health_check', severity: 'info', source: 'monitor', server: 'Server A', action: 'Scheduled check', outcome: 'healthy', message: 'Health check passed', origin: 'operational' }))].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+        D.servers = [{ id: 'a', name: 'Server A', role: 'primary', health: 'healthy', readiness: 'ready', last_check_at: iso(1), consecutive_failures: 0, response_ms: 42, active: true }, { id: 'b', name: 'Server B', role: 'backup', health: 'healthy', readiness: 'ready', last_check_at: iso(1), consecutive_failures: 0, response_ms: 55, active: false }];
+        D.hist = [1, 2, 3, 4].map(m => ({ checked_at: iso(m), result: 'pass', response_ms: 40 + m, failure_count: 0, error: null, state: 'healthy', check_type: 'scheduled' }));
+        D.inc = [{ incident_id: 'INC-1', detected_at: iso(40), title: 'Repeated health-check failures', server: 'Server A', severity: 'critical', source: 'monitor', status: 'Recovering', recovery_result: 'Pending', origin: 'simulation' }, { incident_id: 'INC-2', detected_at: iso(300), title: 'Request validation failure', server: 'Server A', severity: 'warning', source: 'request-guardian', status: 'Resolved', recovery_result: 'Verified', origin: 'operational' }];
+        D.sims = [{ id: 'SIM-1', name: 'Email validation suite', category: 'validation', started_at: iso(20), completed_at: iso(19), requests_attempted: 8, expected: '8 pass', actual: '8 pass', passed: true }];
+        const em = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+        function vd(p) {
+            const e = []; let fix = null; if (p.name == null || p.name === '') e.push('name required'); const m = p.email;
+            if (m == null || m === '') e.push('email required'); else if (typeof m !== 'string') e.push('email must be a string'); else if (!em.test(m.trim())) e.push('email malformed'); else if (m !== m.trim()) fix = 'email trimmed';
+            const t = p.timestamp; if (t == null || t === '') e.push('timestamp required'); else if (typeof t !== 'string') e.push('timestamp must be a string'); else {
+                const x = t.match(/^(\d{4})-(\d\d)-(\d\d)[T ]\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)?$/);
+                if (!x) e.push('timestamp unparseable'); else { const d = new Date(Date.UTC(+x[1], x[2] - 1, +x[3])); if (d.getUTCMonth() != x[2] - 1 || d.getUTCDate() != +x[3]) e.push('timestamp invalid calendar date'); else if (!x[5]) fix = 'timestamp normalized to UTC (demo policy)' }
+            }
+            return { final_status: e.length ? 'REJECTED' : fix ? 'CORRECTED' : 'SUCCESS', message: e.join('; ') || fix || 'Passed validation', request_id: 'CG-T' + Math.floor(Math.random() * 9e3 + 1e3) }
+        }
+        function demoR(path, opt) {
+            const u = new URL(path, 'http://x'), p = u.pathname, q = Object.fromEntries(u.searchParams);
+            if (p == '/api/health') return { status: 'ok' };
+            if (p == '/api/monitor/status') return { enabled: D.mon, interval_seconds: 5, timeout_seconds: 2, failure_threshold: 3, last_check_at: D.last, last_check_type: 'scheduled' };
+            if (p == '/api/monitor/config') { D.mon = !!opt.body.enabled; return demoR('/api/monitor/status') }
+            if (p == '/api/monitor/check') { D.last = new Date().toISOString(); return { ok: true } }
+            if (p == '/api/servers') return D.servers; if (/^\/api\/servers\//.test(p)) return D.hist; if (p == '/api/overview') return { health_score: 90 }; if (p == '/api/incidents') return D.inc;
+            if (p == '/api/simulations') return D.sims;
+            const rf = () => D.req.filter(r => (!q.status || RS(r.final_status) == q.status) && (!q.origin || r.origin == q.origin) && (!q.q || (r.request_id + (r.detected_issue || '') + (r.rejection_reason || '')).toLowerCase().includes(q.q.toLowerCase())) && (!q.date_from || r.received_at >= q.date_from) && (!q.date_to || r.received_at <= q.date_to + 'T23:59:59Z'));
+            if (p == '/api/requests/stats') { const a = D.req.filter(r => !q.origin || r.origin == q.origin), c = s => a.filter(r => RS(r.final_status) == s).length; return { total: a.length, success: c('SUCCESS'), corrected: c('CORRECTED'), rejected: c('REJECTED'), pending: c('PENDING'), failed: c('FAILED') } }
+            if (p == '/api/requests') { let a = rf().sort((x, y) => String(x[q.sort]).localeCompare(String(y[q.sort])) * (q.order == 'asc' ? 1 : -1)); const n = +q.page_size || 10, pg = +q.page || 1; return { data: a.slice((pg - 1) * n, pg * n), meta: { total: a.length } } }
+            let m = p.match(/^\/api\/requests\/([^/]+)\/history$/); if (m) return D.logs.filter(l => l.request_id == m[1]).map(l => ({ event_type: l.action, created_at: l.timestamp, details: l.message }));
+            m = p.match(/^\/api\/requests\/([^/]+)$/); if (m) return D.req.find(r => r.request_id == m[1]);
+            if (p == '/api/logs') { const a = D.logs.filter(l => (!q.category || l.category == q.category) && (!q.severity || l.severity == q.severity) && (!q.origin || l.origin == q.origin) && (!q.q || JSON.stringify(l).toLowerCase().includes(q.q.toLowerCase())) && (!q.incident_id || l.incident_id == q.incident_id) && (!q.request_id || l.request_id == q.request_id)), n = +q.page_size || 10, pg = +q.page || 1, cnt = {}; D.logs.forEach(l => cnt[l.category] = (cnt[l.category] || 0) + 1); return { data: a.slice((pg - 1) * n, pg * n), meta: { total: a.length, all: D.logs.length, counts: cnt } } }
+            if (/validation-suites/.test(p)) return vd(opt.body.payload);
+            throw Object.assign(new Error('Not implemented in demo mode (requires the real backend)'), { status: 501 })
+        }
+        const demo = (p, o) => new Promise((ok, no) => setTimeout(() => { try { ok(demoR(p, o || {})) } catch (e) { no(e) } }, 100));
+
+        /* ---------- core ---------- */
+        const PG = { overview: ['System Overview', 'Monitor service health, request protection, incident activity, and recovery operations.', '◧', 'Overview'], servers: ['Server Monitoring', 'Monitor primary and backup service health and inspect failure-detection activity.', '▤', 'Servers'], incidents: ['Incidents & Alerts', 'Investigate detected failures and follow their containment and recovery progress.', '⚠', 'Incidents'], requests: ['Request Guardian', 'Inspect request validation, processing outcomes, and dependency-protection decisions.', '⇄', 'Requests'], 'audit-logs': ['Audit Logs', 'Review the recorded history of monitoring, request processing, incident handling, simulation, and recovery activity.', '☰', 'Audit Logs'], 'simulation-lab': ['Simulation Lab', 'Safely test request validation, traffic overload, server failures, health monitoring, and recovery behaviour.', '⚗', 'Simulation Lab'] };
+        const API_BASE = window.CHRONOGUARD_API_BASE || 'http://127.0.0.1:8000';
+        const KEYS = Object.keys(PG), FILE = location.protocol == 'file:', L = { overview: pOv, servers: pSv, incidents: pInc, requests: pReq, 'audit-logs': pLog, 'simulation-lab': pSim };
+        const Q0 = { page: 1, status: '', q: '', scope: 'operational', sort: 'received_at', order: 'desc', from: '', to: '' }, G0 = { page: 1, q: '', cat: '', sev: '', scope: 'operational', from: '', to: '' };
+        let S = { demo: false, conn: 'Checking', mon: null, busy: false, q: { ...Q0 }, lg: { ...G0 }, res: {}, suite: 'email', st: null, fl: null };
+        const cur = () => { const p = (FILE ? location.hash.slice(1) : location.pathname).replace(/^\/+|\/+$/g, ''); return KEYS.includes(p) ? p : 'overview' };
+        const go = p => { FILE ? location.hash = p : (history.pushState({}, '', '/' + p), render()) };
+        async function api(path, opt = {}) {
+            if (S.demo) return demo(path, opt); const c = new AbortController(), t = setTimeout(() => c.abort(), 6000);
+            try {
+                const url = /^https?:\/\//i.test(path) ? path : API_BASE.replace(/\/$/, '') + (path.startsWith('/') ? path : '/' + path);
+                const r = await fetch(url, { method: opt.method || 'GET', signal: c.signal, headers: { 'Content-Type': 'application/json' }, body: opt.body ? JSON.stringify(opt.body) : undefined }); const j = await r.json().catch(() => null);
+                if (!r.ok) throw Object.assign(new Error(get(j?.error, 'message') || j?.error || j?.detail || r.statusText), { status: r.status, body: j }); return j
+            }
+            catch (e) { if (e.name == 'AbortError') throw new Error('Request timed out'); throw e } finally { clearTimeout(t) }
+        }
+        function chrome() {
+            const p = cur(); $('#nav').innerHTML = KEYS.map((k, i) => (i == 0 ? '<div class="grp">Monitor</div>' : i == 5 ? '<div class="grp">Test</div>' : '') + `<a class="nl${k == p ? ' act' : ''}" href="${FILE ? '#' : '/'}${k}" data-p="${k}"${k == p ? ' aria-current="page"' : ''}><span aria-hidden="true">${PG[k][2]}</span>${PG[k][3]}</a>`).join('');
+            $('#t').textContent = PG[p][0]; $('#d').textContent = PG[p][1]; document.title = PG[p][0] + ' | ChronoGuard'; $('#env').textContent = S.demo ? '● DEMO' : '● LOCAL';
+            const c = $('#cn'); c.className = 'b ' + ({ Connected: 'ok', Degraded: 'wa', Disconnected: 'cr', Demo: 'sim' }[S.conn] || 'ne'); c.textContent = 'API: ' + S.conn;
+            const m = S.mon, mp = $('#mp'); mp.className = 'b ' + (m ? m.enabled ? 'ok' : 'wa' : 'ne'); mp.textContent = m ? 'Monitoring: ' + (m.enabled ? 'On' : 'Paused') : 'Monitoring: —';
+            $('#bn').innerHTML = (S.demo ? '<div class="bn sim">DEMO DATA — sample records, not read from the backend or PostgreSQL.</div>' : '') + (m && m.enabled === false ? '<div class="bn wa">Monitoring Paused — Status May Be Stale. Showing last known results with their timestamps.</div>' : '')
+        }
+        async function render() { S.q.page = 1; chrome(); $('#sb').classList.remove('open'); view('<div class="ctr mu" role="status">Loading…</div>'); refresh() }
+        async function refresh() {
+            if (S.busy) return; S.busy = true; try {
+                if (S.demo) S.conn = 'Demo'; else try { const h = await api('/api/health'); S.conn = h && (h.status == 'degraded' || h.database == 'down' || h.db === false || h.database === false) ? 'Degraded' : 'Connected' } catch { S.conn = 'Disconnected' }
+                S.mon = await api('/api/monitor/status').then(r => r.data || r).catch(() => null); chrome();
+                if (S.conn == 'Disconnected') { view(errBox('API unreachable', 'The ChronoGuard backend did not respond, so no data is shown. Start the Python backend and retry, or switch on Demo data to preview the layout.')); return }
+                await L[cur()](); $('#lr').textContent = 'Updated ' + new Date().toLocaleTimeString()
+            } catch (e) { view(errBox('Could not load this page', e.message)) } finally { S.busy = false }
+        }
+
+        /* ---------- theme + charts (inline SVG; every chart reads real API data, else shows an empty state) ---------- */
+        function setTheme(t) { document.documentElement.dataset.theme = t; const b = $('#th'), l = t == 'light'; b.textContent = l ? '🌙 Dark mode' : '☀ Light mode'; b.setAttribute('aria-label', l ? 'Switch to dark mode' : 'Switch to light mode'); $('meta[name=theme-color]').content = l ? '#eef1f5' : '#0a0c10'; try { localStorage.setItem('cg-theme', t) } catch { } }
+        const toggleTheme = () => setTheme(document.documentElement.dataset.theme == 'light' ? 'dark' : 'light');
+        const C = { ok: '#22c55e', co: '#f97316', cr: '#ef4444', in: '#3b82f6', ne: '#6b7280', ac: '#14b8a6', wa: '#f59e0b' }, svg = (w, h, b) => `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="Chart">${b}</svg>`;
+        const leg = a => `<p class="mu">${a.map(([l, c]) => `<span style="color:${c}">■</span> ${l}`).join(' &nbsp; ')}</p>`;
+        const arcP = (p0, p1, r = 90) => { const a = p => (180 + 1.8 * p) * Math.PI / 180, pt = p => [(110 + r * Math.cos(a(p))).toFixed(1), (110 + r * Math.sin(a(p))).toFixed(1)], [x0, y0] = pt(p0), [x1, y1] = pt(p1); return `M${x0} ${y0}A${r} ${r} 0 0 1 ${x1} ${y1}` };
+        function gauge(v) {
+            if (v == null || isNaN(+v)) return na + '<p class="mu">Shown only when the backend computes a health score (health_score in /api/overview).</p>'; v = Math.max(0, Math.min(100, +v)); const k = v >= 80 ? C.ok : v >= 60 ? C.wa : C.cr, lab = v >= 90 ? 'Excellent' : v >= 80 ? 'Good' : v >= 60 ? 'Degraded' : 'Critical', seg = (a, b, c) => `<path d="${arcP(a, b)}" stroke="${c}" opacity=".3" stroke-width="12" fill="none"/>`;
+            return `<svg viewBox="0 0 220 135" width="100%" style="max-height:220px" role="img" aria-label="Health score ${v} of 100, ${lab}">${seg(0, 60, C.cr)}${seg(60, 80, C.wa)}${seg(80, 100, C.ok)}<path d="${arcP(0, Math.max(v, .5))}" stroke="${k}" stroke-width="12" fill="none" stroke-linecap="round"/><text x="110" y="100" text-anchor="middle" style="font-size:34px;font-weight:800;fill:var(--tx)">${v}</text><text x="110" y="118" text-anchor="middle">/100 · ${lab}</text></svg>`
+        }
+        function topo(pr, bk) {
+            const col = s => s ? C[hk(get(s, 'health', 'status'))] || C.ne : C.ne, sl = s => s ? s.active === true ? 'active' : s.active === false ? 'standby' : 'unconfirmed' : 'n/a',
+                node = (x, y, l, c, s = '') => `<rect x="${x}" y="${y}" width="86" height="40" rx="10" fill="var(--s2)" stroke="${c}" stroke-width="2"/><text x="${x + 43}" y="${y + 17}" text-anchor="middle" style="font-size:11px;font-weight:700;fill:var(--tx)">${l}</text><text x="${x + 43}" y="${y + 31}" text-anchor="middle">${s}</text>`,
+                ln = (x1, y1, x2, y2, c, d) => `<path d="M${x1} ${y1}C${(x1 + x2) / 2} ${y1} ${(x1 + x2) / 2} ${y2} ${x2} ${y2}" fill="none" stroke="${c}" stroke-width="2.5"${d ? ' stroke-dasharray="6 5"' : ''}/>`;
+            return svg(520, 190, ln(96, 95, 150, 95, C.ac) + ln(236, 95, 300, 45, col(pr), pr?.active !== true) + ln(236, 95, 300, 145, col(bk), bk?.active !== true) + ln(386, 45, 430, 95, col(pr)) + ln(386, 145, 430, 95, col(bk)) + node(10, 75, 'Client', C.ne) + node(150, 75, 'ChronoGuard', C.ac) + node(300, 25, 'Server A', col(pr), sl(pr)) + node(300, 125, 'Server B', col(bk), sl(bk)) + node(430, 75, 'Database', C.ne)) + '<p class="mu">Border color = backend-reported health. Solid line = confirmed active destination; dashed = standby or unconfirmed.</p>'
+        }
+        function reqChart(rows) {
+            const T = (rows || []).map(r => +new Date(r.received_at)).filter(Boolean); if (!T.length) return empty('No timestamped request records to chart.'); const mn = Math.min(...T), mx = Math.max(...T), N = 12, w = Math.max((mx - mn) / N, 6e4), B = Array.from({ length: N }, (_, i) => ({ t: mn + i * w, ok: 0, co: 0, cr: 0, ot: 0 }));
+            rows.forEach(r => { const t = +new Date(r.received_at); if (!t) return; const s = rst(r); B[Math.min(N - 1, Math.floor((t - mn) / w))][s == 'SUCCESS' ? 'ok' : s == 'CORRECTED' ? 'co' : s == 'REJECTED' ? 'cr' : 'ot']++ });
+            const M = Math.max(1, ...B.map(b => b.ok + b.co + b.cr + b.ot)), H = 130, tm = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return svg(480, 170, `<line x1="30" y1="${H + 10}" x2="475" y2="${H + 10}" stroke="var(--bd)"/><text x="2" y="18">${M}</text><text x="2" y="${H + 10}">0</text>` + B.map((b, i) => { let y = H + 10; const x = 34 + i * 37; return ['ok', 'co', 'cr', 'ot'].map(k => { const h = b[k] / M * H; y -= h; return h ? `<rect x="${x}" y="${y}" width="28" height="${h}" fill="${k == 'ot' ? C.in : C[k]}"><title>${tm(b.t)} · ${k}: ${b[k]}</title></rect>` : '' }).join('') + (i % 3 == 0 ? `<text x="${x}" y="${H + 25}">${tm(b.t)}</text>` : '') }).join('')) + leg([['success', C.ok], ['corrected', C.co], ['rejected', C.cr], ['pending/other', C.in]]) + `<small class="mu">${rows.length} unique requests (latest 200, operational scope)</small>`
+        }
+        function donut(st) {
+            if (!st) return na; const it = [['Success', get(st, 'success', 'successful'), C.ok], ['Corrected', st.corrected, C.co], ['Rejected', st.rejected, C.cr], ['Pending', st.pending, C.in], ['Failed', get(st, 'failed', 'processing_failures'), '#e11d48']].map(([l, v, c]) => [l, +v || 0, c]), T = it.reduce((a, x) => a + x[1], 0); if (!T) return empty('No requests recorded yet.'); let o = 0; const R = 40, CC = 2 * Math.PI * R;
+            return svg(240, 120, it.map(([l, v, c]) => { const d = v / T * CC, e = `<circle cx="60" cy="60" r="${R}" fill="none" stroke="${c}" stroke-width="16" stroke-dasharray="${d} ${CC - d}" stroke-dashoffset="${-o}" transform="rotate(-90 60 60)"><title>${l}: ${v}</title></circle>`; o += d; return e }).join('') + `<text x="60" y="65" text-anchor="middle" style="font-size:16px;font-weight:800;fill:var(--tx)">${T}</text>` + it.map(([l, v, c], i) => `<text x="124" y="${28 + i * 18}"><tspan style="fill:${c}">■</tspan> ${l} ${v} (${(v / T * 100).toFixed(0)}%)</text>`).join(''))
+        }
+        function rtChart(h) {
+            const p = [...h].reverse().map(x => ({ t: get(x, 'checked_at', 'timestamp'), y: x.response_ms, s: x.server })).filter(x => x.y != null); if (p.length < 2) return empty('Not enough measured response times to chart.'); const M = Math.max(...p.map(x => x.y)) || 1, pts = p.map((x, i) => [34 + i * 436 / (p.length - 1), 130 - x.y / M * 110]), tm = t => new Date(t).toLocaleTimeString();
+            return svg(480, 160, `<text x="2" y="18">${M} ms</text><line x1="30" y1="130" x2="475" y2="130" stroke="var(--bd)"/><polyline points="${pts.map(a => a.join(',')).join(' ')}" fill="none" stroke="${C.ac}" stroke-width="2"/>` + pts.map((a, i) => `<circle cx="${a[0]}" cy="${a[1]}" r="3.5" fill="${C.ac}"><title>${p[i].s} · ${tm(p[i].t)} · ${p[i].y} ms</title></circle>`).join('') + `<text x="34" y="150">${tm(p[0].t)}</text><text x="470" y="150" text-anchor="end">${tm(p[p.length - 1].t)}</text>`) + '<small class="mu">Measured response times, all servers merged; hover a point for the server.</small>'
+        }
+
+        /* ---------- Overview ---------- */
+        const srv = s => `<div class="card"><div style="display:flex;justify-content:space-between"><h2>${f(get(s, 'name', 'id'))} — ${/prim/i.test(s.role) ? 'Primary' : 'Backup'}</h2>${hp(get(s, 'health', 'status'))}</div>${kv([['Current role', s.active === true ? pl('Active', 'ok') : s.active === false ? pl('Standby', 'in') : '—'], ['Readiness', f(s.readiness)], ['Last health check', ts(get(s, 'last_check_at', 'last_check'))], ['Consecutive failures', f(s.consecutive_failures)], ['Response time', s.response_ms != null ? s.response_ms + ' ms' : '—']])}${S.mon && S.mon.enabled === false ? '<small style="color:#f59e0b">May be stale — monitoring paused</small>' : ''}</div>`;
+        async function pOv() {
+            const [sl, ov, st, inc, lg, rq] = await Promise.all(['/api/servers', '/api/overview', '/api/requests/stats' + qs({ origin: 'operational' }), '/api/incidents', '/api/logs?page_size=6&origin=operational', '/api/requests?page_size=200&origin=operational'].map(u => api(u).catch(() => null)));
+            const sv_ = sl && list(sl), pr = sv_?.find(s => /prim/i.test(s.role)), bk = sv_?.find(s => /back/i.test(s.role)), il = inc && list(inc), ac = il?.filter(i => !/resolved/i.test(get(i, 'status') || '')), m = S.mon;
+            const hs = (s) => s ? hp(get(s, 'health', 'status')) : na, sub = s => s ? `Checked ${ts(get(s, 'last_check_at'))} · failures ${f(s.consecutive_failures)}` : '';
+            const kp = (l, v, s) => `<div class="card kpi"><span>${l}</span><b style="font-size:20px">${v}</b><small>${s}</small></div>`;
+            const LC = [['Monitor', 'Checking service health.'], ['Detect', 'Evaluating consecutive failures.'], ['Contain', 'Preventing invalid or unhealthy dependencies from propagating faults.'], ['Recover', 'Switching to a healthy backup when failover is implemented.'], ['Verify', 'Confirming request or recovery results.'], ['Log', 'Persisting the operation result.']];
+            view(`<div class="kpis">${kp('Primary server health', hs(pr), sub(pr))}${kp('Backup server health', hs(bk), sub(bk))}${kpi('Requests processed', st ? get(st, 'total', 'total_requests') : null, st ? `ok ${f(get(st, 'success', 'successful'))} · rejected ${f(st.rejected)}` : '')}${kpi('Active incidents', ac ? ac.length : null, ac ? `${ac.filter(i => /crit/i.test(i.severity)).length} critical · ${ac.filter(i => /warn/i.test(i.severity)).length} warning` : '')}${kpi('Failover events', get(ov, 'failover_events'), f(get(ov, 'latest_failover')))}${kpi('Verification success', get(ov, 'verification_success'))}</div>
+<div class="g2"><div class="card"><h2>System health score</h2>${gauge(get(ov, 'health_score'))}</div><div class="card"><h2>Failover topology</h2>${topo(pr, bk)}</div></div><div class="g2"><div class="card"><h2>Requests over time</h2>${reqChart(rq && list(rq))}</div><div class="card"><h2>Request outcomes</h2>${donut(st)}</div></div>
+<div class="card"><h2>Monitoring</h2>${m ? kv([['Automated health checks', m.enabled ? pl('Enabled', 'ok') : pl('Paused — may be stale', 'wa')], ['Latest check', ts(m.last_check_at) + ' (' + f(m.last_check_type) + ')']]) : na}</div>
+<div class="g2">${pr ? srv(pr) : ''}${bk ? srv(bk) : ''}${!sv_ ? `<div class="card">${na}<p class="mu">Server data could not be loaded from /api/servers.</p></div>` : ''}</div>
+<div class="card"><h2>Self-healing lifecycle</h2><div class="lc">${LC.map(([n, t]) => { const s = get(ov?.lifecycle, n.toLowerCase()); return `<div class="st"><b>${n}</b><small>${t}</small>${s ? pl(s, /complete/i.test(s) ? 'ok' : /fail/i.test(s) ? 'cr' : /progress/i.test(s) ? 'in' : 'ne') : pl('Not Available', 'ne')}</div>` }).join('')}</div></div>
+<div class="g2"><div class="card"><h2>Outcome counts <small class="mu">(operational, unique requests)</small></h2>${st ? `<div class="lc">${[['SUCCESS', 'success', 'successful'], ['CORRECTED', 'corrected'], ['REJECTED', 'rejected'], ['PENDING', 'pending']].map(([s, ...k]) => `<div class="st">${rp(s)}<b style="display:block;font-size:22px">${f(get(st, ...k))}</b></div>`).join('')}</div>` : na}<p><a class="btn" href="${FILE ? '#' : '/'}requests" data-p="requests">Open Request Guardian</a></p></div>
+<div class="card"><h2>Recent activity</h2>${lg && list(lg).length ? list(lg).map(l => `<div style="padding:7px 0;border-bottom:1px solid var(--bd)"><span class="mu">${ts(l.timestamp)}</span> · ${f(l.category)}<br>${f(l.message)} ${l.outcome ? hp(l.outcome) : ''}</div>`).join('') : empty(lg ? 'No recorded events yet.' : na)}<p><a class="btn" href="${FILE ? '#' : '/'}audit-logs" data-p="audit-logs">View audit logs</a></p></div></div>`)
+        }
+
+        /* ---------- Servers ---------- */
+        async function pSv() {
+            const sl = list(await api('/api/servers')), m = S.mon;
+            const hs = (await Promise.all(sl.map(s => api('/api/servers/' + encodeURIComponent(s.id) + '/health-history').then(r => list(r).map(h => ({ ...h, server: get(s, 'name', 'id') }))).catch(() => [])))).flat().sort((a, b) => String(get(b, 'checked_at', 'timestamp')).localeCompare(String(get(a, 'checked_at', 'timestamp')))).slice(0, 50);
+            view(`<div class="g2">${sl.map(srv).join('') || `<div class="card">${empty('No servers returned by the backend.')}</div>`}</div>
+<div class="card"><h2>Monitor configuration</h2>${m ? kv([['Health-check interval', m.interval_seconds + ' s'], ['Timeout', m.timeout_seconds + ' s'], ['Failures before unhealthy', m.failure_threshold]]) + `<p class="mu">Under this configuration, ${f(m.failure_threshold)} consecutive failed checks mark a server unhealthy. Observed detection time varies with timeouts and scheduling, so it is not a fixed duration.</p>` : na}<button class="btn" data-a="mc" ${m ? '' : 'disabled'}>Run manual health check</button> <a class="btn" href="${FILE ? '#' : '/'}simulation-lab" data-p="simulation-lab">Open Simulation Lab</a></div>
+<div class="card"><h2>Response time</h2>${rtChart(hs)}</div>
+<div class="card"><h2>Health-check history</h2>${hs.length ? table(['Timestamp', 'Server', 'Result', 'Response', 'Failures', 'Error', 'State after', 'Type'], hs.map(h => `<tr><td>${ts(get(h, 'checked_at', 'timestamp'))}</td><td>${f(h.server)}</td><td>${hp(get(h, 'result', 'status'))}</td><td>${h.response_ms != null ? h.response_ms + ' ms' : '—'}</td><td>${f(get(h, 'failure_count', 'consecutive_failures'))}</td><td>${f(get(h, 'error', 'error_message'))}</td><td>${hp(get(h, 'state', 'health'))}</td><td>${f(h.check_type)}</td></tr>`).join('')) : empty('No health-check history recorded.')}</div>`)
+        }
+
+        /* ---------- Incidents ---------- */
+        const LCI = ['Detected', 'Investigating', 'Contained', 'Recovering', 'Verified', 'Resolved'];
+        async function pInc() {
+            const il = list(await api('/api/incidents')), open = i => !/resolved/i.test(get(i, 'status') || ''), n = fn => il.filter(fn).length; S.il = il;
+            view(`<div class="kpis">${kpi('Active', n(open))}${kpi('Critical', n(i => open(i) && /crit/i.test(i.severity)))}${kpi('Warnings', n(i => open(i) && /warn/i.test(i.severity)))}${kpi('Resolved', n(i => !open(i)))}${kpi('Failed recoveries', n(i => /fail/i.test(i.recovery_result || '')))}</div>
+<div class="card"><div class="tools"><input type="search" id="iq" placeholder="Search incident ID or title" aria-label="Search incidents"><select id="is" aria-label="Severity"><option value="">All severities</option><option>critical</option><option>warning</option><option>info</option></select><select id="ist" aria-label="Status"><option value="">All statuses</option><option>open</option><option>resolved</option></select><button class="btn" data-a="ic">Clear filters</button></div><div id="it"></div></div>`); tInc()
+        }
+        function tInc() {
+            const q = ($('#iq')?.value || '').toLowerCase(), sv_ = $('#is')?.value, st = $('#ist')?.value;
+            const r = S.il.filter(i => (!q || (String(get(i, 'incident_id', 'id')) + i.title).toLowerCase().includes(q)) && (!sv_ || String(i.severity).toLowerCase() == sv_) && (!st || (st == 'resolved') == /resolved/i.test(i.status || '')));
+            $('#it').innerHTML = r.length ? table(['ID', 'Detected', 'Title', 'Server', 'Severity', 'Source', 'Status', 'Recovery', 'Origin'], r.map(i => `<tr data-a="iv" data-id="${esc(get(i, 'incident_id', 'id'))}" tabindex="0"><td class="mono">${f(get(i, 'incident_id', 'id'))}</td><td>${ts(i.detected_at)}</td><td>${f(i.title)}</td><td>${f(i.server)}</td><td>${pl(i.severity ?? '—', sv(i.severity))}</td><td>${f(i.source)}</td><td>${f(i.status)}</td><td>${f(i.recovery_result)}</td><td>${i.origin == 'simulation' ? pl('SIMULATION', 'sim') : f(i.origin)}</td></tr>`).join('')) : empty(S.il.length ? 'No incidents match the filters.' : 'No incidents recorded. Incidents appear here only when detected or generated by a labelled simulation.')
+        }
+
+        /* ---------- Requests ---------- */
+        async function pReq() {
+            const q = S.q; S.st = await api('/api/requests/stats' + qs({ origin: q.scope == 'all' ? '' : q.scope })).catch(() => null); const st = S.st, tot = st && get(st, 'total', 'total_requests'), rt = k => st && tot > 0 && st[k] != null ? (st[k] / tot * 100).toFixed(1) + '%' : '—';
+            view(`<div class="kpis">${[['Total requests', 'total', 'total_requests'], ['Successfully processed', 'success', 'successful'], ['Corrected', 'corrected'], ['Rejected', 'rejected'], ['Pending', 'pending'], ['Processing failures', 'failed', 'processing_failures']].map(([l, ...k]) => kpi(l, st ? get(st, ...k) : null)).join('')}</div>
+<div class="card"><h2>Request Database Monitor</h2><p class="mu">Live view of incoming requests, validation outcomes, corrections, and rejected records. Correction rate ${rt('corrected')} · rejection rate ${rt('rejected')} (of unique requests, ${q.scope} scope). Test cases live in <a href="${FILE ? '#' : '/'}simulation-lab" data-p="simulation-lab" style="color:var(--ac)">Simulation Lab</a>.</p>
+<div class="tools"><input type="search" data-f="q.q" placeholder="Search request ID or issue (press Enter)" aria-label="Search requests" value="${esc(q.q)}"><select data-f="q.scope" aria-label="Scope">${opt([['operational', 'Operational'], ['all', 'Including simulation'], ['simulation', 'Simulation only']], q.scope)}</select><input type="date" data-f="q.from" aria-label="From date" value="${q.from}"><input type="date" data-f="q.to" aria-label="To date" value="${q.to}"><button class="btn" data-a="rc">Clear filters</button></div>
+<div class="chips" role="group" aria-label="Status filter">${[['', 'All'], ['SUCCESS', 'Successful'], ['CORRECTED', 'Corrected'], ['REJECTED', 'Rejected'], ['PENDING', 'Pending'], ['FAILED', 'Failed'], ['QUARANTINED', 'Quarantined']].map(([v, l]) => `<button class="chip${q.status == v ? ' on' : ''}" data-a="rs" data-v="${v}" aria-pressed="${q.status == v}">${l}</button>`).join('')}</div></div><div class="card" id="rt"></div>`); tReq()
+        }
+        async function tReq() {
+            const q = S.q; try {
+                const r = await api('/api/requests' + qs({ page: q.page, page_size: 10, status: q.status, q: q.q, origin: q.scope == 'all' ? '' : q.scope, sort: q.sort, order: q.order, date_from: q.from, date_to: q.to })), rows = list(r), n = mt(r);
+                $('#rt').innerHTML = (rows.length ? `<div class="mu cnt">${rows.length} returned · ${n ?? '—'} matching · ${S.st ? get(S.st, 'total', 'total_requests') ?? '—' : '—'} total unique requests</div>` + table([['Request ID', 'request_id'], ['Received', 'received_at'], 'Original data', 'Validation', 'Detected issue', 'Correction applied', 'Original value', 'Corrected value', ['Final status', 'final_status'], 'Server', 'Verification', ['Last updated', 'updated_at'], 'Actions'], rows.map(r => { const s = rst(r); return `<tr class="row ${K[s]}" data-a="rv" data-id="${esc(r.request_id)}" tabindex="0"><td class="mono">${f(r.request_id)}${r.origin == 'simulation' ? ' ' + pl('SIM', 'sim') : ''}</td><td>${ts(r.received_at)}</td><td class="mono">${f(sh(red(r.original_payload)))}</td><td>${f(r.validation_status)}</td><td>${f(r.detected_issue)}</td><td>${r.correction_applied == null ? '—' : r.correction_applied ? 'Yes' : 'No'}</td><td class="mono">${f(r.original_value)}</td><td class="mono">${f(r.corrected_value)}</td><td>${rp(s)}</td><td>${f(r.processing_server)}</td><td>${f(r.verification_status)}</td><td>${ts(r.updated_at)}</td><td><button class="btn" data-a="rv" data-id="${esc(r.request_id)}">View</button></td></tr>` }).join('')) : empty('No requests match the current filters.')) + pager(q.page, n, 10, 'rpg')
+            } catch (e) { $('#rt').innerHTML = errBox('Could not load requests', e.message) }
+        }
+        async function reqDrawer(id) {
+            drawer('Request ' + esc(id), '<p class="mu">Loading…</p>'); try {
+                const [r, h] = await Promise.all([api('/api/requests/' + encodeURIComponent(id)), api('/api/requests/' + encodeURIComponent(id) + '/history').catch(() => null)]), ev = h ? list(h) : [], s = rst(r);
+                $('#dp').innerHTML = `<div class="dh"><b>Request ${esc(id)}</b><button class="btn" data-a="dx" aria-label="Close details">✕</button></div>${rp(s)}<h3>Request information</h3>${kv([['Received', ts(r.received_at)], ['Endpoint', f(get(r, 'endpoint', 'request_type'))], ['Status', f(get(r, 'processing_status', 'status'))], ['Server', f(r.processing_server)], ['Origin', f(r.origin)], ['Payload (redacted)', `<span class="mono">${f(red(r.original_payload))}</span>`]])}<h3>Validation results</h3>${kv([['Validation', f(r.validation_status)], ['Detected issue', f(r.detected_issue)], ['Errors', f(red(r.validation_errors))]])}<h3>Correction history</h3>${kv([['Applied', r.correction_applied == null ? '—' : r.correction_applied ? 'Yes' : 'No'], ['Type', f(r.correction_type)], ['Original', f(r.original_value)], ['Corrected', f(r.corrected_value)], ['Reason', f(r.correction_reason)], ['Verification', f(r.verification_status)]])}<h3>Rejection information</h3>${kv([['Reason', f(r.rejection_reason)], ['Failed rule', f(r.failed_rule)], ['Safe retry eligible', f(r.retry_eligible)]])}<h3>Audit trail (stored events only)</h3>${ev.length ? ev.map(e => `<div style="padding:5px 0;border-bottom:1px solid var(--bd)">${ts(get(e, 'created_at', 'timestamp'))} · <b>${f(get(e, 'event_type', 'action'))}</b><br><span class="mu">${f(typeof e.details == 'object' ? red(e.details) : e.details)}</span></div>`).join('') : '<p class="mu">No history events stored for this request.</p>'}<p><button class="btn" data-a="lreq" data-id="${esc(id)}">View related audit logs</button></p>`
+            } catch (e) { $('#dp').innerHTML = errBox('Could not load request', e.message) }
+        }
+
+        /* ---------- Audit Logs ---------- */
+        const CATS = ['health_check', 'validation', 'correction', 'rejection', 'incident', 'recovery', 'monitor', 'simulation'];
+        async function pLog() { const g = S.lg; view(`<div id="lk" class="kpis"></div><div class="card"><div class="tools"><input type="search" data-f="lg.q" placeholder="Search message, request or incident ID (Enter)" aria-label="Search logs" value="${esc(g.q)}"><select data-f="lg.cat" aria-label="Category">${opt([['', 'All categories'], ...CATS.map(c => [c, c])], g.cat)}</select><select data-f="lg.sev" aria-label="Severity">${opt([['', 'All severities'], ['info', 'info'], ['warning', 'warning'], ['critical', 'critical']], g.sev)}</select><select data-f="lg.scope" aria-label="Scope">${opt([['operational', 'Operational'], ['all', 'Including simulation'], ['simulation', 'Simulation only']], g.scope)}</select><input type="date" data-f="lg.from" aria-label="From date" value="${g.from}"><input type="date" data-f="lg.to" aria-label="To date" value="${g.to}"><button class="btn" data-a="lc">Clear filters</button><button class="btn" data-a="lx">⇩ Export CSV</button></div><div id="lt"></div></div>`); tLog() }
+        const lp = (n, page) => qs({ page, page_size: n, q: S.lg.q, category: S.lg.cat, severity: S.lg.sev, origin: S.lg.scope == 'all' ? '' : S.lg.scope, date_from: S.lg.from, date_to: S.lg.to, request_id: S.lg.rid, incident_id: S.lg.iid });
+        async function tLog() {
+            try {
+                const r = await api('/api/logs' + lp(10, S.lg.page)), rows = list(r), c = r?.meta?.counts;
+                $('#lk').innerHTML = kpi('Total recorded events', r?.meta?.all ?? null, 'all stored events') + ['health_check', 'validation', 'incident', 'recovery'].map(k => kpi(k.replace('_', '-') + ' events', c ? c[k] ?? 0 : null)).join('');
+                $('#lt').innerHTML = (rows.length ? `<div class="mu cnt">${rows.length} returned · ${mt(r) ?? '—'} matching</div>` + table(['Event', 'Timestamp', 'Category', 'Severity', 'Source', 'Server', 'Request / incident', 'Action', 'Outcome', 'Message'], rows.map((l, i) => `<tr data-a="lv" data-i="${i}" tabindex="0"><td class="mono">${f(get(l, 'event_id', 'id'))}</td><td>${ts(l.timestamp)}</td><td>${f(l.category)}${l.origin == 'simulation' ? ' ' + pl('SIM', 'sim') : ''}</td><td>${pl(l.severity ?? '—', sv(l.severity))}</td><td>${f(get(l, 'source', 'source_component'))}</td><td>${f(l.server)}</td><td class="mono">${f(get(l, 'request_id', 'incident_id'))}</td><td>${f(l.action)}</td><td>${f(l.outcome)}</td><td>${f(l.message)}</td></tr>`).join('')) : empty('No audit events match the filters.')) + pager(S.lg.page, mt(r), 10, 'lpg'); S.rows = rows
+            } catch (e) { $('#lt').innerHTML = errBox('Could not load logs', e.message) }
+        }
+        async function exportCsv() {
+            try {
+                const rows = list(await api('/api/logs' + lp(1000, 1))), H = ['event_id', 'timestamp', 'category', 'severity', 'source', 'server', 'request_id', 'incident_id', 'simulation_run_id', 'action', 'outcome', 'message', 'origin'];
+                if (!rows.length) return toast('Nothing to export for these filters.', 1); const c = v => { v = v == null ? '' : String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"' };
+                const csv = [H.join(','), ...rows.map(l => H.map(h => c(h == 'event_id' ? get(l, 'event_id', 'id') : h == 'source' ? get(l, 'source', 'source_component') : l[h])).join(','))].join('\n'), a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'chronoguard-audit-logs.csv'; a.click(); toast('Exported ' + rows.length + ' events')
+            } catch (e) { toast(e.message, 1) }
+        }
+
+        /* ---------- Simulation Lab ---------- */
+        const V = { name: 'Test User', email: 'user@example.com', timestamp: '2026-10-26T10:30:00Z' }, mk = o => ({ ...V, ...o }), no = k => { const o = { ...V }; delete o[k]; return o }, OK = 'SUCCESS', RJ = 'REJECTED', CR = 'CORRECTED', QU = 'QUARANTINED';
+        const SU = {
+            email: [['Valid email', mk({}), [OK]], ['Missing email', no('email'), [RJ]], ['Empty email', mk({ email: '' }), [RJ]], ['Malformed email', mk({ email: 'user@@example' }), [RJ]], ['Email as number', mk({ email: 12345 }), [RJ]], ['Email null', mk({ email: null }), [RJ]], ['Whitespace around email', mk({ email: '  user@example.com ' }), [OK, CR]], ['Valid email, invalid timestamp', mk({ timestamp: 'not-a-timestamp' }), [RJ, QU]]],
+            timestamp: [['UTC ISO-8601', mk({}), [OK]], ['Positive offset', mk({ timestamp: '2026-10-26T16:00:00+05:30' }), [OK, CR]], ['Negative offset', mk({ timestamp: '2026-10-26T05:00:00-05:00' }), [OK, CR]], ['Missing timezone', mk({ timestamp: '2026-10-26 10:30:00' }), [CR, RJ, QU]], ['Invalid month', mk({ timestamp: '2026-13-01T00:00:00Z' }), [RJ]], ['Impossible calendar date', mk({ timestamp: '2026-02-30T00:00:00Z' }), [RJ]], ['Unparseable string', mk({ timestamp: 'not-a-valid-timestamp' }), [RJ, QU]], ['Wrong data type', mk({ timestamp: 20261026 }), [RJ]], ['Empty timestamp', mk({ timestamp: '' }), [RJ]], ['Missing timestamp', no('timestamp'), [RJ]]],
+            'required-fields': [['Valid request', mk({}), [OK]], ['Missing name', no('name'), [RJ]], ['Empty name', mk({ name: '' }), [RJ]], ['Name null', mk({ name: null }), [RJ]], ['Multiple simultaneous errors', { name: '', email: 7, timestamp: 'bad' }, [RJ]]]
+        };
+        const RES = [['primary-failure', 'Simulate primary failure'], ['backup-failure', 'Simulate backup failure'], ['both-failure', 'Both servers unavailable'], ['primary-recovery', 'Restore primary'], ['reset', 'Reset simulation state']];
+        async function pSim() {
+            const m = S.mon, h = list(await api('/api/simulations').catch(() => [])), on = m?.enabled;
+            view(`<div class="bn sim" style="margin:0 0 14px;border-radius:10px">SIMULATION MODE — tests run against the local/designated test environment only. Records are tagged SIMULATION.</div>
+<div class="card"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h2 style="margin:0">Automated Health Checks</h2><button class="sw" id="sw" role="switch" aria-checked="${!!on}" aria-label="Automated health checks" data-a="mt" ${m ? '' : 'disabled'}></button>${m ? on ? pl('Enabled', 'ok') : pl('Disabled — status may be stale', 'ne') : pl('Not Available', 'ne')}</div>
+${m ? kv([['Interval', m.interval_seconds + ' s'], ['Request timeout', m.timeout_seconds + ' s'], ['Failure threshold', m.failure_threshold + ' consecutive failures'], ['Last health check', ts(m.last_check_at) + ' (' + f(m.last_check_type) + ')']]) : '<p class="mu">Monitor status endpoint unavailable.</p>'}<button class="btn" data-a="mc" ${m ? '' : 'disabled'}>Run manual check</button></div>
+<div class="card"><h2>Request Flood Test</h2><form id="ff" class="tools" onsubmit="return false"><label>Requests <select name="count">${opt([10, 50, 100, 250, 500].map(x => [x, x]), 50)}</select></label><label>Per second <input name="rate" type="number" min="1" max="50" value="10" style="width:80px"></label><label>Type <select name="type">${opt([['mixed', 'Mixed'], ['valid', 'Valid'], ['invalid', 'Invalid']], 'mixed')}</select></label><label>Concurrency <input name="conc" type="number" min="1" max="10" value="2" style="width:70px"></label><button class="btn p" data-a="fs">Start flood test</button><button class="btn" data-a="fx">Stop test</button><button class="btn" data-a="fc">Clear results</button></form><p class="mu">Limits are enforced by the backend. Pause is not offered because the backend has no pause operation.</p><div id="fr"></div></div>
+<div class="card"><h2>Validation Test Suites</h2><div class="chips" role="tablist">${[['email', 'Email'], ['timestamp', 'Timestamp'], ['required-fields', 'Required fields & integrity']].map(([k, l]) => `<button class="chip${S.suite == k ? ' on' : ''}" role="tab" aria-selected="${S.suite == k}" data-a="su" data-v="${k}">${l}</button>`).join('')}</div><p><button class="btn p" data-a="sa">Run all</button></p><div id="sr"></div></div>
+<div class="card"><h2>Server Resilience Tests</h2><p class="mu">Safe simulated faults only. Failover is reported only if the backend confirms it.</p><div class="tools">${RES.map(([k, l]) => `<button class="btn" data-a="rs2" data-v="${k}">${l}</button>`).join('')}</div><div id="rr"></div></div>
+<div class="card"><h2>Custom Test Scenarios</h2><p class="mu">Not Implemented — requires a bounded scenario endpoint on the backend.</p></div>
+<div class="card"><h2>Simulation results & history</h2>${h.length ? table(['Test ID', 'Name', 'Category', 'Started', 'Completed', 'Requests', 'Expected', 'Actual', 'Result'], h.map(s => `<tr><td class="mono">${f(get(s, 'id', 'test_id'))}</td><td>${f(s.name)}</td><td>${f(s.category)}</td><td>${ts(s.started_at)}</td><td>${ts(s.completed_at)}</td><td>${f(s.requests_attempted)}</td><td>${f(get(s, 'expected', 'expected_outcome'))}</td><td>${f(get(s, 'actual', 'actual_outcome'))}</td><td>${s.passed == null ? '—' : s.passed ? pl('✓ Passed', 'ok') : pl('✕ Failed', 'cr')}</td></tr>`).join('')) : empty('No simulation runs recorded.')}</div>`); suiteRender(); floodRender()
+        }
+        function suiteRender() { const k = S.suite, R = S.res[k] || {}; $('#sr').innerHTML = table(['Test case', 'Expected', 'Actual', 'Result', 'Message', 'Request ID', ''], SU[k].map((c, i) => { const r = R[i]; const res = !r ? '—' : r.err ? pl('Unavailable', 'ne') : c[2].includes(r.actual) ? pl('✓ Pass', 'ok') : pl('✕ Fail', 'cr'); return `<tr><td>${c[0]}</td><td>${c[2].join(' / ')}</td><td>${r ? r.err ? '—' : rp(r.actual) : '—'}</td><td>${res}</td><td>${r ? esc(r.msg) : '—'}</td><td class="mono">${r ? f(r.rid) : '—'}</td><td><button class="btn" data-a="sc" data-i="${i}">Run</button></td></tr>` }).join('')) }
+        async function runCase(i) {
+            const k = S.suite, c = SU[k][i]; S.res[k] = S.res[k] || {}; let r; try { r = await api(`/api/simulations/validation-suites/${k}/run`, { method: 'POST', body: { case: c[0], payload: c[1] } }) } catch (e) { r = e.body && get(e.body, 'final_status', 'status') ? e.body : null; if (!r) { S.res[k][i] = { err: 1, msg: e.message }; return } }
+            S.res[k][i] = { actual: RS(get(r, 'final_status', 'processing_status', 'status')), msg: get(r, 'message', 'detected_issue', 'rejection_reason') || '', rid: get(r, 'request_id') }
+        }
+        function floodRender() {
+            const r = S.fl, el = $('#fr'); if (!el) return; if (!r) { el.innerHTML = ''; return } const n = +get(r, 'count', 'requested') || 0, a = +get(r, 'attempted') || 0, codes = r.status_codes || r.codes;
+            el.innerHTML = kv([['Test ID', f(get(r, 'id', 'test_id'))], ['Status', f(r.status)], ['Progress', `<div class="bar"><i style="width:${n ? Math.min(100, a / n * 100) : 0}%"></i></div>${a} / ${n || '—'}`], ['Attempted', f(r.attempted)], ['Accepted', f(get(r, 'accepted', 'success'))], ['Corrected', f(r.corrected)], ['Rejected', f(r.rejected)], ['Failed', f(r.failed)], ['Avg / max response', (r.avg_ms != null ? r.avg_ms : '—') + ' / ' + (r.max_ms != null ? r.max_ms : '—') + ' ms'], ['HTTP codes', codes ? esc(Object.entries(codes).map(([c, v]) => c + ':' + v).join(' · ')) : '—'], ['Started / ended', ts(r.started_at) + ' → ' + ts(r.completed_at)]])
+        }
+        async function pollFl() { clearTimeout(S.pt); const id = get(S.fl, 'id', 'test_id'); if (!id || cur() != 'simulation-lab') return; try { S.fl = await api('/api/simulations/' + encodeURIComponent(id)); floodRender(); if (/pending|running|queued/i.test(S.fl.status || '')) S.pt = setTimeout(pollFl, 1000) } catch (e) { toast(e.message, 1) } }
+
+        /* ---------- actions ---------- */
+        const ACT = {
+            th: () => toggleTheme(), rf: () => refresh(), menu: () => $('#sb').classList.toggle('open'), dx: closeDr,
+            rs: b => { S.q.status = b.dataset.v; S.q.page = 1; pReq() }, rc: () => { S.q = { ...Q0 }; pReq() }, rpg: b => { S.q.page = +b.dataset.p; tReq() }, rsort: b => { const k = b.dataset.k; S.q.order = S.q.sort == k && S.q.order == 'desc' ? 'asc' : 'desc'; S.q.sort = k; S.q.page = 1; tReq() }, rv: b => reqDrawer(b.dataset.id),
+            lc: () => { S.lg = { ...G0 }; pLog() }, lpg: b => { S.lg.page = +b.dataset.p; tLog() }, lx: exportCsv,
+            lreq: b => { closeDr(); S.lg = { ...G0, rid: b.dataset.id, scope: 'all' }; go('audit-logs') },
+            lv: b => { const l = S.rows[+b.dataset.i]; drawer('Event ' + f(get(l, 'event_id', 'id')), kv(Object.entries(l).map(([k, v]) => [k, `<span class="mono">${f(typeof v == 'object' ? red(v) : v)}</span>`]))) },
+            ic: () => { ['#iq', '#is', '#ist'].forEach(s => $(s).value = ''); tInc() },
+            iv: async b => {
+                const i = S.il.find(x => String(get(x, 'incident_id', 'id')) == b.dataset.id), id = get(i, 'incident_id', 'id'), at = LCI.findIndex(s => new RegExp(s, 'i').test(i.status || '')); drawer('Incident ' + esc(id), '<p class="mu">Loading…</p>');
+                const lg = await api('/api/logs' + qs({ incident_id: id, page_size: 10 })).then(list).catch(() => []);
+                $('#dp').innerHTML = `<div class="dh"><b>Incident ${esc(id)}</b><button class="btn" data-a="dx" aria-label="Close details">✕</button></div><h3>Lifecycle</h3><div class="chips">${LCI.map((s, k) => pl((k <= at ? '✓ ' : '') + s, k < at ? 'ok' : k == at ? 'in' : 'ne')).join('')}${/fail|unresolved/i.test((i.status || '') + (i.recovery_result || '')) ? pl('Failed / Unresolved', 'cr') : ''}</div><h3>Summary</h3>${kv([['Title', f(i.title)], ['Detected', ts(i.detected_at)], ['Affected service', f(i.server)], ['Severity', f(i.severity)], ['Source', f(i.source)], ['Origin', f(i.origin)], ['Failure details', f(get(i, 'details', 'failure_details', 'error'))], ['Containment', f(i.containment_action)], ['Recovery attempts', f(i.recovery_attempts)], ['Recovery result', f(i.recovery_result)], ['Verification', f(i.verification_result)]])}<h3>Related audit events</h3>${lg.length ? lg.map(l => `<div>${ts(l.timestamp)} · ${f(l.message)}</div>`).join('') : '<p class="mu">No related events stored.</p>'}`
+            },
+            mt: async () => {
+                const on = S.mon?.enabled; if (on && !confirm('Pause automated health checks? Displayed status will become stale.')) return; $('#sw').disabled = true;
+                try { const r = await api('/api/monitor/config', { method: 'PUT', body: { enabled: !on } }); S.mon = r.data || r; toast('Monitoring ' + (S.mon.enabled ? 'enabled' : 'paused')) } catch (e) { toast(e.message, 1) }
+                S.busy = false; refresh()
+            },
+            mc: async () => { try { await api('/api/monitor/check', { method: 'POST' }); toast('Manual health check completed') } catch (e) { toast(e.message, 1) } refresh() },
+            fs: async () => {
+                const d = Object.fromEntries(new FormData($('#ff'))); const b = { count: +d.count, rate: +d.rate, type: d.type, concurrency: +d.conc }; if (b.count >= 250 && !confirm(`Start a ${b.count}-request flood against the local test API?`)) return;
+                try { S.fl = await api('/api/simulations/floods', { method: 'POST', body: b }); S.fl.count = S.fl.count || b.count; floodRender(); pollFl() } catch (e) { toast(e.message, 1) }
+            },
+            fx: async () => { const id = get(S.fl, 'id', 'test_id'); if (!id) return toast('No active test.', 1); try { await api(`/api/simulations/${encodeURIComponent(id)}/stop`, { method: 'POST' }); toast('Stop requested'); pollFl() } catch (e) { toast(e.message, 1) } },
+            fc: () => { clearTimeout(S.pt); S.fl = null; floodRender() },
+            su: b => { S.suite = b.dataset.v; pSim() }, sc: async b => { b.disabled = true; await runCase(+b.dataset.i); suiteRender() },
+            sa: async () => { for (let i = 0; i < SU[S.suite].length; i++)await runCase(i); suiteRender() },
+            rs2: async b => {
+                const k = b.dataset.v; if (k != 'reset' && !confirm('Run this SIMULATED fault? It affects simulation state only.')) return; try {
+                    const r = await api(k == 'reset' ? '/api/simulations/reset' : '/api/simulations/resilience/' + k, { method: 'POST' });
+                    $('#rr').innerHTML = kv(Object.entries(r.data || r).filter(([, v]) => typeof v != 'object').map(([a, v]) => [esc(a), f(v)])) || ''; toast('Backend responded')
+                } catch (e) { $('#rr').innerHTML = `<p class="mu">${esc(e.message)}</p>`; toast(e.message, 1) }
+            }
+        };
+        document.addEventListener('click', e => { const n = e.target.closest('a[data-p]'); if (n) { e.preventDefault(); if (FILE) location.hash = n.dataset.p; else go(n.dataset.p); return } const a = e.target.closest('[data-a]'); if (a) ACT[a.dataset.a]?.(a) });
+        document.addEventListener('keydown', e => { if (e.key == 'Escape') closeDr(); if (e.key == 'Enter' && e.target.matches('tr[data-a]')) e.target.click() });
+        $('#drw').addEventListener('click', e => { if (e.target.id == 'drw') closeDr() });
+        document.addEventListener('change', e => { const t = e.target; if (t.id == 'dm') { S.demo = t.checked; S.res = {}; S.fl = null; return render() } if (t.matches('#iq,#is,#ist')) return tInc(); const d = t.dataset.f; if (!d) return; const [o, k] = d.split('.'); S[o][k] = t.value; S[o].page = 1; o == 'q' ? pReq() : pLog() });
+        document.addEventListener('input', e => { if (e.target.matches('#iq')) tInc() });
+        addEventListener('popstate', render); addEventListener('hashchange', render);
+        setInterval(() => { if (!document.hidden && !S.busy && $('#drw').hidden && !document.activeElement?.matches('input,select') && cur() != 'simulation-lab') refresh() }, 20000);
+        let t0 = 'dark'; try { t0 = localStorage.getItem('cg-theme') || 'dark' } catch { } setTheme(t0);
+        render();
+    </script>
+</body>
+
+</html>
