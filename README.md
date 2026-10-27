@@ -10,6 +10,7 @@ ChronoGuard is a web-based request monitoring and failure simulation platform de
 - **📋 Request Monitoring** — View, search, and filter request records.
 - **⚡ Simulation Lab** — Run supported, bounded validation, load, health-check, failover, and PostgreSQL verification scenarios. Unsupported scenarios are shown but cannot be started.
 - **🔁 Server failover** — At the configured 65% simulated-load threshold, the Health Shield can route from the overloaded primary to the healthy backup, then fail back once primary load drops below the threshold.
+- **🧯 Dual-server capacity protection** — The backend supports a dual-server exhaustion scenario where both servers can hit configured capacity, reject new requests with a 503 and Retry-After, and resume admission only after the configured 75% recovery threshold is satisfied.
 - **🔗 API Integration** — Integrate with a FastAPI backend and PostgreSQL database.
 
 On startup, FastAPI creates any missing tables defined by the SQLAlchemy models. This does not alter existing tables; use a migration for schema changes. `python init_db.py` remains available for explicit database initialization.

@@ -79,6 +79,21 @@ class ShieldSettings(Base):
     active_server = Column(String(20), nullable=False, default="primary")
     primary_load_pct = Column(Integer, nullable=False, default=0)
     backup_load_pct = Column(Integer, nullable=False, default=0)
+    server_a_capacity = Column(Integer, nullable=False, default=100)
+    server_b_capacity = Column(Integer, nullable=False, default=100)
+    server_a_utilization = Column(Integer, nullable=False, default=0)
+    server_b_utilization = Column(Integer, nullable=False, default=0)
+    recovery_threshold = Column(Integer, nullable=False, default=75)
+    admission_status = Column(String(30), nullable=False, default="accepting_requests")
+    capacity_exhausted = Column(Boolean, nullable=False, default=False)
+    form_admission_status = Column(String(20), nullable=False, default="accepting")
+    simulation_active = Column(Boolean, nullable=False, default=False)
+    accepted_requests = Column(Integer, nullable=False, default=0)
+    rejected_requests = Column(Integer, nullable=False, default=0)
+    queued_requests = Column(Integer, nullable=False, default=0)
+    completed_requests = Column(Integer, nullable=False, default=0)
+    capacity_exhaustion_incidents = Column(Integer, nullable=False, default=0)
+    last_capacity_event = Column(Text, nullable=True)
     updated_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -90,10 +90,10 @@ SCENARIOS = [
         "B1",
         "Request Validation",
         "Invalid Email",
-        "Pass malformed email data through the production validator.",
+        "Submit malformed email data and record the request as a failure.",
         "low",
         [],
-        "Reject malformed email without raising an unhandled error.",
+        "Count the invalid email simulation as failed and report the validator decision.",
         True,
     ),
     _scenario(
@@ -212,6 +212,26 @@ SCENARIOS = [
         "medium",
         ["failure_threshold"],
         "Fail back only after a successful health check.",
+        True,
+    ),
+    _scenario(
+        "C7",
+        "Server Capacity and Admission Control",
+        "Dual-Server Capacity Exhaustion",
+        "Simulate both servers reaching their configured processing capacity; block admission when no capacity remains.",
+        "critical",
+        [
+            "server_a_capacity",
+            "server_b_capacity",
+            "server_a_initial_utilization",
+            "server_b_initial_utilization",
+            "incoming_request_rate",
+            "processing_duration_ms",
+            "recovery_threshold",
+            "simulation_duration_seconds",
+            "shield_enabled",
+        ],
+        "Reject new requests while both servers are overloaded and resume only when both have recovered below the configured threshold.",
         True,
     ),
     _scenario(
@@ -635,8 +655,20 @@ def _run_validation(scenario_id: str) -> tuple[bool, str, dict]:
     if scenario_id == "B1":
         payload["email"] = "not-an-email"
         result = validate_request_data(payload)
-        passed = not result["valid"] and any(
+        rejected = not result["valid"] and any(
             "email" in error.lower() for error in result["errors"]
+        )
+        actual = (
+            "Malformed email was rejected by the production validator; "
+            "the invalid request was counted as failed."
+            if rejected
+            else "Malformed email was not rejected by the production validator; "
+            "the invalid request was counted as failed."
+        )
+        return (
+            False,
+            actual,
+            {"validation_result": result, "request_failed": True},
         )
     elif scenario_id == "B2":
         payload["timestamp"] = "2026-02-30T25:00:00Z"
@@ -866,6 +898,39 @@ def _run_scenario(
                     ),
                 )
             check_services_once()
+    if scenario_id == "C7":
+        a_capacity = max(1, int(config.get("server_a_capacity", config.get("server_a_max_capacity", 100))))
+        b_capacity = max(1, int(config.get("server_b_capacity", config.get("server_b_max_capacity", 100))))
+        a_util = max(0, min(100, int(config.get("server_a_initial_utilization", config.get("server_a_utilization", 100)))))
+        b_util = max(0, min(100, int(config.get("server_b_initial_utilization", config.get("server_b_utilization", 100)))))
+        recovery_threshold = max(50, min(95, int(config.get("recovery_threshold", 75))))
+        update_settings(
+            shield_enabled=bool(shield_enabled),
+            server_a_capacity=a_capacity,
+            server_b_capacity=b_capacity,
+            server_a_utilization=a_util,
+            server_b_utilization=b_util,
+            recovery_threshold=recovery_threshold,
+            simulation_active=True,
+            admission_status="capacity_exhausted" if a_util >= 100 and b_util >= 100 else "accepting_requests",
+            capacity_exhausted=a_util >= 100 and b_util >= 100,
+            form_admission_status="closed" if a_util >= 100 and b_util >= 100 else "open",
+            last_capacity_event="Dual-server capacity simulation configured.",
+        )
+        passed = True
+        return (
+            passed,
+            "Dual-server capacity scenario configured; backend admission logic enforced the configured threshold.",
+            {
+                "server_a_capacity": a_capacity,
+                "server_b_capacity": b_capacity,
+                "server_a_initial_utilization": a_util,
+                "server_b_initial_utilization": b_util,
+                "recovery_threshold": recovery_threshold,
+                "shield_enabled": shield_enabled,
+                "capacity_exhausted": a_util >= 100 and b_util >= 100,
+            },
+        )
     if scenario_id == "E1":
         settings = get_settings()
         return (

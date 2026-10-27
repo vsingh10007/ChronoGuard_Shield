@@ -213,6 +213,35 @@ async function runSimulation() {
     toast(`Backend unavailable: ${error.message}. Start FastAPI and PostgreSQL.`);
   }
 
+  if (eventType === "C7") {
+    const cfg = {
+      server_a_capacity: Number($("serverACapacity").value || 100),
+      server_b_capacity: Number($("serverBCapacity").value || 100),
+      server_a_initial_utilization: Number($("serverAUtilization").value || 0),
+      server_b_initial_utilization: Number($("serverBUtilization").value || 0),
+      incoming_request_rate: Number($("incomingRequestRate").value || 45),
+      processing_duration_ms: Number($("processingDurationMs").value || 1200),
+      recovery_threshold: Number($("recoveryThreshold").value || 75),
+      simulation_duration_seconds: Number($("simulationDurationSeconds").value || 30),
+      shield_enabled: state.shieldEnabled
+    };
+    const capacityResponse = await fetch(`${API_BASE}/api/capacity/simulation/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config: cfg })
+    });
+    const capacityBody = await capacityResponse.json().catch(() => null);
+    if (!capacityResponse.ok) {
+      throw new Error(typeof capacityBody?.detail === "string" ? capacityBody.detail : JSON.stringify(capacityBody?.detail || capacityBody || { message: "Capacity simulation failed" }));
+    }
+    const capacityStatus = capacityBody || {};
+    const globalStatus = capacityStatus.global_status || "ACCEPTING REQUESTS";
+    setStage("Monitor", `Capacity scenario started. Global status: ${globalStatus}.`, capacityStatus.capacity_exhausted ? "bad" : "good");
+    toast((capacityStatus.capacity_exhausted ? "Capacity exhausted — request admission is blocked." : "Capacity scenario configured and accepting requests."));
+    const statusNode = $("capacityScenarioPanel"); if (statusNode) statusNode.classList.remove("hidden");
+    return;
+  }
+
   // A normal request must not enter the fault-simulation animation.
   if (eventType === "validRequest") {
     if (!backendResult) return;
@@ -366,6 +395,15 @@ const zoomInButton = $("zoomIn"), zoomOutButton = $("zoomOut"), zoomResetButton 
 if (zoomInButton) zoomInButton.addEventListener("click", () => { graphZoom = Math.min(1.6, +(graphZoom + 0.1).toFixed(2)); applyGraphZoom(); });
 if (zoomOutButton) zoomOutButton.addEventListener("click", () => { graphZoom = Math.max(0.6, +(graphZoom - 0.1).toFixed(2)); applyGraphZoom(); });
 if (zoomResetButton) zoomResetButton.addEventListener("click", () => { graphZoom = 1; applyGraphZoom(); });
+if ($("faultSelect")) {
+  const syncCapacityPanel = () => {
+    const isCapacity = $("faultSelect").value === "C7";
+    const panel = $("capacityScenarioPanel");
+    if (panel) panel.classList.toggle("hidden", !isCapacity);
+  };
+  $("faultSelect").addEventListener("change", syncCapacityPanel);
+  syncCapacityPanel();
+}
 $("simulateButton").addEventListener("click", runSimulation);
 const stopButton = $("stopButton");
 if (stopButton) stopButton.addEventListener("click", () => {
@@ -384,6 +422,7 @@ $("resetButton").addEventListener("click", () => {
   resetFaults(); state.incidents = []; state.recoveryCount = 0; state.stage = "Ready"; setStage("Ready", "Simulation reset. Both sources and dependent services are healthy.", "good"); updateDashboard(); selectItem("node", "primary"); applyGraphZoom(); refreshPostgresRows(); toast("Simulation reset.");
 });
 $("shieldToggle").addEventListener("click", () => { state.shieldEnabled = !state.shieldEnabled; state.nodes.shield.data.mode = state.shieldEnabled ? "enabled" : "disabled"; state.nodes.shield.action = state.shieldEnabled ? "Ready to inspect data and prevent invalid data from spreading." : "Protection disabled by operator."; updateDashboard(); selectItem("node", "shield"); toast(state.shieldEnabled ? "ChronoGuard enabled." : "ChronoGuard disabled."); });
+if ($("capacityShieldToggle")) { $("capacityShieldToggle").addEventListener("click", () => { state.shieldEnabled = !state.shieldEnabled; const toggle = $("capacityShieldToggle"); if (toggle) { toggle.setAttribute("aria-checked", String(state.shieldEnabled)); toggle.querySelector("span").classList.toggle("translate-x-5", state.shieldEnabled); toggle.querySelector("span").classList.toggle("translate-x-0", !state.shieldEnabled); toggle.classList.toggle("bg-emerald-600", state.shieldEnabled); toggle.classList.toggle("bg-red-600", !state.shieldEnabled); } toast(state.shieldEnabled ? "Health Shield enabled for capacity protection." : "Health Shield disabled; capacity protection is off."); }); }
 if ($("clearLogsButton")) $("clearLogsButton").addEventListener("click", () => { state.incidents = []; renderIncidents(); updateDashboard(); toast("System logs cleared."); });
 $("clearSelectionButton").addEventListener("click", () => { state.selected = null; $("detailKind").textContent = "None"; $("detailTitle").textContent = "No selection"; $("detailSubtitle").textContent = "Select a node or connector in the graph."; $("detailStatus").textContent = "—"; $("detailData").textContent = "No data selected"; $("detailAction").textContent = "Select an element to inspect its state."; renderGraph(); });
 updateClock(); setInterval(updateClock, 1000); setStage("Ready", "Shield ready. Monitoring both time sources.", "good"); updateDashboard(); selectItem("node", "primary"); applyGraphZoom(); refreshPostgresRows();

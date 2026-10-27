@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -43,6 +44,39 @@ logger = logging.getLogger("chronoguard")
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as conn:
+        columns = conn.execute(
+            text(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'shield_settings'
+                """
+            )
+        ).scalars().all()
+        for definition in (
+            ("server_a_capacity", "INTEGER NOT NULL DEFAULT 100"),
+            ("server_b_capacity", "INTEGER NOT NULL DEFAULT 100"),
+            ("server_a_utilization", "INTEGER NOT NULL DEFAULT 0"),
+            ("server_b_utilization", "INTEGER NOT NULL DEFAULT 0"),
+            ("recovery_threshold", "INTEGER NOT NULL DEFAULT 75"),
+            ("admission_status", "VARCHAR(30) NOT NULL DEFAULT 'accepting_requests'"),
+            ("capacity_exhausted", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("form_admission_status", "VARCHAR(20) NOT NULL DEFAULT 'accepting'"),
+            ("simulation_active", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("accepted_requests", "INTEGER NOT NULL DEFAULT 0"),
+            ("rejected_requests", "INTEGER NOT NULL DEFAULT 0"),
+            ("queued_requests", "INTEGER NOT NULL DEFAULT 0"),
+            ("completed_requests", "INTEGER NOT NULL DEFAULT 0"),
+            ("capacity_exhaustion_incidents", "INTEGER NOT NULL DEFAULT 0"),
+            ("last_capacity_event", "TEXT"),
+        ):
+            if definition[0] not in columns:
+                conn.execute(
+                    text(
+                        f"ALTER TABLE shield_settings ADD COLUMN IF NOT EXISTS {definition[0]} {definition[1]}"
+                    )
+                )
     start_monitor()
     try:
         yield
@@ -260,6 +294,77 @@ def _monitor_summary(settings: dict) -> dict:
     }
 
 
+_CAPACITY_LOCK = threading.Lock()
+
+
+def _capacity_state_from_settings(settings: dict | None = None) -> dict:
+    settings = settings or get_settings()
+    server_a_capacity = max(1, int(settings.get("server_a_capacity", 100)))
+    server_b_capacity = max(1, int(settings.get("server_b_capacity", 100)))
+    server_a_utilization = max(0, min(100, int(settings.get("server_a_utilization", 0))))
+    server_b_utilization = max(0, min(100, int(settings.get("server_b_utilization", 0))))
+    recovery_threshold = max(50, min(95, int(settings.get("recovery_threshold", 75))))
+    shield_enabled = bool(settings.get("shield_enabled", True))
+    both_overloaded = server_a_utilization >= 100 and server_b_utilization >= 100
+    admissions_open = shield_enabled and not both_overloaded
+    server_a_available = max(0, int(round(server_a_capacity * (100 - server_a_utilization) / 100)))
+    server_b_available = max(0, int(round(server_b_capacity * (100 - server_b_utilization) / 100)))
+    if both_overloaded:
+        global_status = "CAPACITY EXHAUSTED"
+        form_admission_status = "closed"
+        admission_status = "capacity_exhausted"
+    elif not admissions_open:
+        global_status = "WAITING FOR RECOVERY"
+        form_admission_status = "closed"
+        admission_status = "waiting_for_recovery"
+    elif server_a_utilization >= recovery_threshold or server_b_utilization >= recovery_threshold:
+        global_status = "RESUMING SERVICE"
+        form_admission_status = "opening"
+        admission_status = "resuming_service"
+    else:
+        global_status = "ACCEPTING REQUESTS"
+        form_admission_status = "open"
+        admission_status = "accepting_requests"
+    return {
+        "server_a_capacity": server_a_capacity,
+        "server_b_capacity": server_b_capacity,
+        "server_a_utilization": server_a_utilization,
+        "server_b_utilization": server_b_utilization,
+        "server_a_available_capacity": server_a_available,
+        "server_b_available_capacity": server_b_available,
+        "total_configured_capacity": server_a_capacity + server_b_capacity,
+        "current_recovery_threshold": recovery_threshold,
+        "recovery_threshold": recovery_threshold,
+        "admission_open": admissions_open,
+        "admission_status": admission_status,
+        "form_admission_status": form_admission_status,
+        "global_status": global_status,
+        "capacity_exhausted": both_overloaded,
+        "shield_enabled": shield_enabled,
+        "currently_processing_requests": int(settings.get("accepted_requests", 0)) - int(settings.get("completed_requests", 0)),
+        "pending_requests": int(settings.get("queued_requests", 0)),
+        "completed_requests": int(settings.get("completed_requests", 0)),
+        "accepted_requests": int(settings.get("accepted_requests", 0)),
+        "rejected_requests": int(settings.get("rejected_requests", 0)),
+        "capacity_exhaustion_incidents": int(settings.get("capacity_exhaustion_incidents", 0)),
+        "simulation_active": bool(settings.get("simulation_active", False)),
+        "server_a_state": "Full" if server_a_utilization >= 100 else "High Load" if server_a_utilization >= recovery_threshold else "Healthy",
+        "server_b_state": "Full" if server_b_utilization >= 100 else "High Load" if server_b_utilization >= recovery_threshold else "Healthy",
+    }
+
+
+def _capacity_snapshot() -> dict:
+    with _CAPACITY_LOCK:
+        settings = get_settings()
+        snapshot = _capacity_state_from_settings(settings)
+        update_settings(
+            admission_status=snapshot["admission_status"],
+            capacity_exhausted=snapshot["capacity_exhausted"],
+            form_admission_status=snapshot["form_admission_status"],
+        )
+        return snapshot
+
+
 @app.get("/")
 def root():
     return {
@@ -363,6 +468,228 @@ def monitor_check_now():
             status_code=503,
             detail="Manual health check failed; check database connectivity and backend logs.",
         ) from exc
+
+
+@app.get("/api/capacity/status")
+def capacity_status():
+    try:
+        return _capacity_snapshot()
+    except Exception as exc:
+        logger.exception("Could not read capacity status")
+        raise HTTPException(status_code=503, detail="Capacity status unavailable.") from exc
+
+
+@app.get("/api/capacity/history")
+def capacity_history(limit: int = Query(default=25, ge=1, le=200)):
+    settings = get_settings()
+    history = []
+    if settings.get("last_capacity_event"):
+        history.append({
+            "timestamp": settings["updated_at"],
+            "status": settings["admission_status"],
+            "message": settings["last_capacity_event"],
+            "server_a_utilization": settings["server_a_utilization"],
+            "server_b_utilization": settings["server_b_utilization"],
+        })
+    return {"data": history[:limit], "total": len(history), "limit": limit}
+
+
+@app.get("/api/capacity/incidents")
+def capacity_incidents():
+    settings = get_settings()
+    count = int(settings.get("capacity_exhaustion_incidents", 0))
+    if count <= 0:
+        return {"data": [], "total": 0}
+    return {
+        "data": [
+            {
+                "incident_id": "CAP-1",
+                "status": settings.get("admission_status", "accepting_requests"),
+                "severity": "high",
+                "description": settings.get("last_capacity_event") or "Dual-server capacity exhaustion detected.",
+                "detected_at": settings.get("updated_at"),
+            }
+        ],
+        "total": 1,
+    }
+
+
+@app.post("/api/capacity/settings")
+def update_capacity_settings(payload: dict[str, Any]):
+    try:
+        config = payload or {}
+        values = {}
+        for key in ("server_a_capacity", "server_b_capacity", "server_a_utilization", "server_b_utilization", "recovery_threshold"):
+            if key in config:
+                values[key] = int(config[key])
+        if "shield_enabled" in config:
+            values["shield_enabled"] = bool(config["shield_enabled"])
+        if not values and not config:
+            values = {"shield_enabled": True}
+        settings = update_settings(**values)
+        return _capacity_snapshot()
+    except Exception as exc:
+        logger.exception("Could not update capacity settings")
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/capacity/simulation/start")
+def start_capacity_simulation(payload: dict[str, Any]):
+    config = payload.get("config", payload) if isinstance(payload, dict) else {}
+    try:
+        args = {
+            "server_a_capacity": int(config.get("server_a_capacity", config.get("server_a_max_capacity", 100))),
+            "server_b_capacity": int(config.get("server_b_capacity", config.get("server_b_max_capacity", 100))),
+            "server_a_utilization": int(config.get("server_a_initial_utilization", config.get("server_a_utilization", 0))),
+            "server_b_utilization": int(config.get("server_b_initial_utilization", config.get("server_b_utilization", 0))),
+            "recovery_threshold": int(config.get("recovery_threshold", 75)),
+            "shield_enabled": bool(config.get("shield_enabled", True)),
+            "simulation_active": True,
+            "last_capacity_event": "Dual-server capacity simulation started.",
+        }
+        settings = update_settings(**args)
+        snapshot = _capacity_snapshot()
+        if snapshot["capacity_exhausted"]:
+            settings = update_settings(
+                capacity_exhaustion_incidents=int(settings.get("capacity_exhaustion_incidents", 0)) + 1,
+                last_capacity_event="Capacity exhaustion detected; both servers reached configured maximum capacity.",
+            )
+            snapshot = _capacity_snapshot()
+        return {"status": "started", **snapshot, "settings": settings}
+    except Exception as exc:
+        logger.exception("Could not start capacity simulation")
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/capacity/simulation/stop")
+def stop_capacity_simulation():
+    settings = update_settings(simulation_active=False, last_capacity_event="Dual-server capacity simulation stopped.")
+    return {"status": "stopped", **_capacity_snapshot(), "settings": settings}
+
+
+@app.post("/api/capacity/reset")
+def reset_capacity_state():
+    settings = update_settings(
+        server_a_capacity=100,
+        server_b_capacity=100,
+        server_a_utilization=0,
+        server_b_utilization=0,
+        recovery_threshold=75,
+        admission_status="accepting_requests",
+        capacity_exhausted=False,
+        form_admission_status="open",
+        simulation_active=False,
+        accepted_requests=0,
+        rejected_requests=0,
+        queued_requests=0,
+        completed_requests=0,
+        capacity_exhaustion_incidents=0,
+        last_capacity_event="Capacity state reset.",
+    )
+    return {"status": "reset", **_capacity_snapshot(), "settings": settings}
+
+
+@app.post("/api/capacity/form")
+def submit_capacity_form(payload: dict[str, Any]):
+    snapshot = _capacity_snapshot()
+    if not snapshot["admission_open"]:
+        body = payload or {}
+        rejected_payload = {
+            "full_name": body.get("full_name") or body.get("name") or "",
+            "email": body.get("email") or "",
+            "request_category": body.get("request_category") or body.get("category") or "general",
+            "message": body.get("message") or "",
+        }
+        _record_request(
+            request_id=str(uuid.uuid4()),
+            request_type="capacity_form",
+            event_type="capacity_exhaustion",
+            source="form-page",
+            active_server=None,
+            shield_enabled=int(bool(get_settings().get("shield_enabled", True))),
+            validation_status="rejected",
+            final_status="rejected",
+            processing_stage="Contain",
+            payload=rejected_payload,
+            recovery_action="Request rejected due to dual-server capacity exhaustion.",
+            error_message="Service Temporarily Unavailable",
+            duration_ms=0,
+        )
+        settings = get_settings()
+        update_settings(
+            rejected_requests=int(settings.get("rejected_requests", 0)) + 1,
+            last_capacity_event="Rejected request because both servers were at maximum capacity.",
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "title": "Service Temporarily Unavailable",
+                "message": "Both servers are currently at maximum capacity. We cannot accept new requests at this moment. Please try again shortly.",
+                "retry_after": 30,
+                "server_a_utilization": snapshot["server_a_utilization"],
+                "server_b_utilization": snapshot["server_b_utilization"],
+                "status": snapshot["global_status"],
+            },
+            headers={"Retry-After": "30"},
+        )
+    body = payload or {}
+    name = str(body.get("full_name") or body.get("name") or "").strip()
+    email = str(body.get("email") or "").strip()
+    category = str(body.get("request_category") or body.get("category") or "general").strip()
+    message = str(body.get("message") or "").strip()
+    if not name or not email or not message:
+        raise HTTPException(status_code=400, detail={"message": "Name, email, and message are required."})
+    validated = validate_request_data({
+        "name": name,
+        "email": email,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    if not validated["valid"]:
+        raise HTTPException(status_code=422, detail={"message": "; ".join(validated["errors"])})
+    settings = get_settings()
+    route = "Server A" if settings["server_a_utilization"] <= settings["server_b_utilization"] else "Server B"
+    next_a = min(100, int(settings.get("server_a_utilization", 0)) + 10)
+    next_b = min(100, int(settings.get("server_b_utilization", 0)) + 10)
+    accepted_count = int(settings.get("accepted_requests", 0)) + 1
+    completed_count = int(settings.get("completed_requests", 0)) + 1
+    update_settings(
+        accepted_requests=accepted_count,
+        completed_requests=completed_count,
+        server_a_utilization=next_a if route == "Server A" else settings.get("server_a_utilization", 0),
+        server_b_utilization=next_b if route == "Server B" else settings.get("server_b_utilization", 0),
+        last_capacity_event=f"Accepted request for {category} via {route}.",
+    )
+    _record_request(
+        request_id=str(uuid.uuid4()),
+        request_type="capacity_form",
+        event_type="capacity_form",
+        source="form-page",
+        active_server="primary" if route == "Server A" else "backup",
+        shield_enabled=int(bool(get_settings().get("shield_enabled", True))),
+        validation_status="passed",
+        final_status="processed",
+        processing_stage="Verify",
+        payload={
+            "full_name": name,
+            "email": email,
+            "request_category": category,
+            "message": message,
+            "route": route,
+        },
+        recovery_action=f"Accepted request for {category} and routed to {route}.",
+        duration_ms=0,
+    )
+    return {
+        "status": "accepted",
+        "route": route,
+        "message": "Request accepted and routed to the selected server.",
+        "capacity_status": _capacity_snapshot(),
+    }
+
+
+@app.post("/api/capacity/form/submit")
+def submit_capacity_form_alias(payload: dict[str, Any]):
+    return submit_capacity_form(payload)
 
 
 @app.post("/api/monitor/simulate/{service}/{mode}")
@@ -951,6 +1278,19 @@ def start_simulation(payload: SimulationStartPayload):
         "concurrency": (1, MAX_CONCURRENCY),
         "queue_capacity": (1, MAX_REQUESTS),
         "failure_threshold": (1, 10),
+        "server_a_capacity": (1, 1000),
+        "server_b_capacity": (1, 1000),
+        "server_a_max_capacity": (1, 1000),
+        "server_b_max_capacity": (1, 1000),
+        "server_a_initial_utilization": (0, 100),
+        "server_b_initial_utilization": (0, 100),
+        "server_a_utilization": (0, 100),
+        "server_b_utilization": (0, 100),
+        "incoming_request_rate": (1, 1000),
+        "processing_duration_ms": (1, 60000),
+        "recovery_threshold": (50, 95),
+        "simulation_duration_seconds": (1, 3600),
+        "shield_enabled": (0, 1),
     }
     validated = {}
     for key, value in config.items():
@@ -959,11 +1299,15 @@ def start_simulation(payload: SimulationStartPayload):
                 status_code=422, detail=f"Unsupported simulation setting: {key}"
             )
         low, high = limits[key]
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, int)
-            or not low <= value <= high
-        ):
+        if key == "shield_enabled":
+            if not isinstance(value, bool):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{key} must be a boolean",
+                )
+            validated[key] = value
+            continue
+        if not isinstance(value, int) or isinstance(value, bool) or not low <= value <= high:
             raise HTTPException(
                 status_code=422,
                 detail=f"{key} must be an integer between {low} and {high}",
